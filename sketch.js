@@ -35,6 +35,7 @@ let OUTPUT_START_GAIN = 0.0;          // 출력 게인 시작 값(무음 권장)
 let ENABLE_FADE_IN_ON_RESET = false;  // 리셋 때도 페이드인을 적용할지
 
 // ■ 폰트/텍스트 리소스
+let MSG_SIZE = 34;
 let SENTENCES_FILE = "sentences_KOR.txt"; // 문장 파일 경로
 let FONT_KO = "fonts/AppleMyungjo.ttf";
 let FONT_EN = "fonts/Times New Roman.ttf";
@@ -183,6 +184,7 @@ function startAudio() {
     started = true;
     startTime = new Date();
     cycleStartMillis = millis(); // 사이클 타이머 시작
+    fullscreen(true);
 }
 
 function fadeInAudio(durationMillis = 3000) {
@@ -236,7 +238,7 @@ function draw() {
     if (!started) {
         drawStartScreen();
         return;
-    }
+    } 
 
     if (cnt === 0) startTime = new Date();
 
@@ -361,7 +363,26 @@ function drawGraphPoints() {
 }
 
 function drawCurrentMessage() {
-    // 사이클 기준 경과시간
+    // --- 가드: 모든 문장을 1회 출력했다면, 새 메시지 스케줄 금지 ---
+    if (allMessagesShown) {
+        // 단, 마지막으로 표시한 문장의 잔상(표시 시간)은 그대로 렌더
+        if (frameCount - lastMessageFrame < MESSAGE_PRINT_FRAMES) {
+            push();
+            translate(lastMessageX, height - 22);
+            rotate(-HALF_PI + jitterAngle);
+            textFont(/[ㄱ-ㆎ|가-힣]/.test(currentMessage) ? koreanFont : englishFont);
+            const a = constrain((frameCount - lastMessageFrame) / MESSAGE_PRINT_FRAMES * 255, 0, 255);
+            fill(0, 0, 0, a);
+            noStroke();
+            textSize(MSG_SIZE);
+            textAlign(LEFT, CENTER);
+            text(currentMessage, 0, 0);
+            pop();
+        }
+        return; // ★ 새 문장 생성/스케줄링 로직으로 내려가지 않음
+    }
+
+    // --- 아래는 "allMessagesShown === false"일 때만 동작 ---
     let elapsedSeconds = (millis() - cycleStartMillis) / 1000;
 
     if (sentenceIndex === 0) {
@@ -394,9 +415,10 @@ function drawCurrentMessage() {
         translate(lastMessageX, height - 22);
         rotate(-HALF_PI + jitterAngle);
         textFont(/[ㄱ-ㆎ|가-힣]/.test(currentMessage) ? koreanFont : englishFont);
-        fill(0, 0, 0, constrain((frameCount - lastMessageFrame) / MESSAGE_PRINT_FRAMES * 255, 0, 255));
+        const a = constrain((frameCount - lastMessageFrame) / MESSAGE_PRINT_FRAMES * 255, 0, 255);
+        fill(0, 0, 0, a);
         noStroke();
-        textSize(24);
+        textSize(MSG_SIZE);
         textAlign(LEFT, CENTER);
         text(currentMessage, 0, 0);
         pop();
