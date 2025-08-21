@@ -35,7 +35,7 @@ let OUTPUT_START_GAIN = 0.0;          // 출력 게인 시작 값(무음 권장)
 let ENABLE_FADE_IN_ON_RESET = false;  // 리셋 때도 페이드인을 적용할지
 
 // ■ 폰트/텍스트 리소스
-let MSG_SIZE = 28;
+let MSG_SIZE = 30;
 let SENTENCES_FILE = "sentences_KOR.txt"; // 문장 파일 경로
 let FONT_KO = "fonts/AppleMyungjo.ttf";
 let FONT_EN = "fonts/Times New Roman.ttf";
