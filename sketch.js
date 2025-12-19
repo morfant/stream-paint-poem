@@ -36,7 +36,8 @@ let ENABLE_FADE_IN_ON_RESET = false;  // 리셋 때도 페이드인을 적용할
 
 // ■ 폰트/텍스트 리소스
 let MSG_SIZE = 30;
-let SENTENCES_FILE = "sentences_KOR.txt"; // 문장 파일 경로
+let SENTENCES_FILE_KOR = "sentences_KOR.txt";
+let SENTENCES_FILE_ENG = "sentences_ENG.txt";
 let FONT_KO = "fonts/AppleMyungjo.ttf";
 let FONT_EN = "fonts/Times New Roman.ttf";
 let FONT_EN_THIN = "fonts/NotoSansKR-Thin.otf";
@@ -60,6 +61,9 @@ let lastMessageX = null;
 let currentMessage = "";
 
 let sentences = [];
+let sentencesKOR = [];
+let sentencesENG = [];
+let lang = "KOR";           // 기본값
 let sentenceIndex = 0;
 let jitterAngle = 0;
 let loopCount = 0;
@@ -75,9 +79,18 @@ let messageCount = 0;          // 출력된 문장 수
 let allMessagesShown = false;  // 모든 문장 1회 출력 완료 여부
 let cycleStartMillis = 0;      // 사이클 기준 타이머
 
+
+let ui = {
+    kor: null,
+    eng: null
+    // langLabel: null // (optional, add if you want to reference a label area)
+};
+
 function preload() {
     // 캐시 회피 쿼리 부착
-    sentences = loadStrings(`${SENTENCES_FILE}?${millis()}`);
+    sentencesKOR = loadStrings(`${SENTENCES_FILE_KOR}?${millis()}`);
+    sentencesENG = loadStrings(`${SENTENCES_FILE_ENG}?${millis()}`);
+
     koreanFont = loadFont(FONT_KO);
     englishFont = loadFont(FONT_EN);
     englishFont2 = loadFont(FONT_EN_THIN);
@@ -135,6 +148,9 @@ function setup() {
         source.connect(gainFFT);
         fft.setInput(gainFFT);
     }
+
+    sentences = sentencesKOR;
+
 }
 
 function toggleFullscreen() {
@@ -162,12 +178,53 @@ function windowResized() {
     visualizeMul = width * VISUALIZE_INTENSITY_MUL;
 }
 
+// function mousePressed() {
+//     if (getAudioContext().state !== 'running') {
+//         getAudioContext().resume().then(() => { if (!started) startAudio(); });
+//     } else if (!started) {
+//         startAudio();
+//     }
+// }
+
+function resetMessageStateOnly() {
+    sentenceIndex = 0;
+    messageCount = 0;
+    allMessagesShown = false;
+    currentMessage = "";
+    lastMessageFrame = -1000;
+    lastMessageX = null;
+}
+
 function mousePressed() {
-    if (getAudioContext().state !== 'running') {
-        getAudioContext().resume().then(() => { if (!started) startAudio(); });
-    } else if (!started) {
-        startAudio();
+    // 시작 전: 언어 선택 UI 클릭 처리 (선택 즉시 시작)
+    if (!started) {
+        // 오디오 컨텍스트는 사용자 제스처에서만 resume 가능
+        if (getAudioContext().state !== 'running') {
+            getAudioContext().resume();
+        }
+
+        // ENG
+        if (hit(mouseX, mouseY, ui.eng)) {
+            lang = "ENG";
+            sentences = sentencesENG;
+            resetMessageStateOnly();
+            startAudio();
+            return;
+        }
+
+        // KOR
+        if (hit(mouseX, mouseY, ui.kor)) {
+            lang = "KOR";
+            sentences = sentencesKOR;
+            resetMessageStateOnly();
+            startAudio();
+            return;
+        }
+
+        return;
     }
+
+    // 시작 후(기존 동작 유지): 필요하면 여기에서 추가 동작
 }
 
 function touchStarted() {
@@ -238,7 +295,7 @@ function draw() {
     if (!started) {
         drawStartScreen();
         return;
-    } 
+    }
 
     if (cnt === 0) startTime = new Date();
 
@@ -283,38 +340,118 @@ function drawStartScreen() {
     text("Jiyeon Kim, Gangil Yi", width / 2, height / 2 - 150);
 
     textFont(englishFont2);
-    textSize(15);
+    textSize(25);
     text(getFormattedKoreanTime(), width / 2, height / 2 + 40);
 
+    // --- Live (텍스트, 버튼 아님) ---
+    textFont(englishFont2);
     textSize(24);
-    let liveText = "Live";
-    let textW = textWidth(liveText);
-    let boxW = textW + 40;
-    let boxH = 42;
-    let boxX = width / 2 - boxW / 2;
-    let boxY = height / 2 + 100;
-
-    stroke(255);
-    strokeWeight(2);
-    noFill();
-    rect(boxX, boxY, boxW, boxH, 20);
-
-    strokeWeight(0.1);
+    noStroke();
     fill(255);
-    text(liveText, width / 2, boxY + boxH / 4 + 5);
+    // text("Live", width / 2, height / 2 + 110);
 
-    // 풀스크린이 아닐 때만 버튼 hover 커서 변경
+    // --- 설명 라인 ---
+    textSize(14);
+    // text("Select language", width / 2, height / 2 + 145);
+
+    // --- ENG / KOR 버튼 (설명 아래) ---
+    let langY = height / 2 + 170;
+    let btnW = 90, btnH = 34, gap = 14;
+    let totalW = btnW * 2 + gap;
+    let leftX = width / 2 - totalW / 2;
+
+    ui.eng = { x: leftX, y: langY - 80, w: btnW, h: btnH };
+    ui.kor = { x: leftX + btnW + gap, y: langY - 80, w: btnW, h: btnH };
+
+    // ENG (항상 비어있는 버튼, 선택 시 테두리 두께만 변경)
+    noFill();
+    stroke(255);
+    strokeWeight(lang === "ENG" ? 1.5 : 1.5);
+    rect(ui.eng.x, ui.eng.y, ui.eng.w, ui.eng.h, 16);
+
+    noStroke();
+    fill(255);
+    textFont(englishFont2);
+    textSize(16);
+    text("ENG", ui.eng.x + ui.eng.w / 2, ui.eng.y + ui.eng.h / 2 - 3);
+
+    // KOR (항상 비어있는 버튼, 선택 시 테두리 두께만 변경)
+    noFill();
+    stroke(255);
+    strokeWeight(lang === "KOR" ? 1.5 : 1.5);
+    rect(ui.kor.x, ui.kor.y, ui.kor.w, ui.kor.h, 16);
+
+    noStroke();
+    fill(255);
+    text("KOR", ui.kor.x + ui.kor.w / 2, ui.kor.y + ui.kor.h / 2 - 3);
+
+    // 커서 처리(풀스크린 아닐 때만)
     if (!fullscreen()) {
-        if (mouseX > boxX && mouseX < boxX + boxW && mouseY > boxY && mouseY < boxY + boxH) {
-            cursor(HAND);
-        } else {
-            cursor(ARROW);
-        }
+        let overEng = hit(mouseX, mouseY, ui.eng);
+        let overKor = hit(mouseX, mouseY, ui.kor);
+        if (overEng || overKor) cursor(HAND);
+        else cursor(ARROW);
     }
 
     strokeWeight(0.3);
+    fill(255);
     textSize(18);
     text("* This site works only on desktop versions of Firefox and Chrome", width / 2, height / 2 + 230);
+}
+
+
+// function drawStartScreen() {
+//     background(BG_COLOR);
+//     fill(255);
+//     textAlign(CENTER, CENTER);
+//     strokeWeight(0.1);
+
+//     textFont(englishFont);
+//     textSize(30);
+//     text("Some-bodies are listening, too", width / 2, height / 2 - 220);
+
+//     textFont(englishFont2);
+//     textSize(20);
+//     text("Jiyeon Kim, Gangil Yi", width / 2, height / 2 - 150);
+
+//     textFont(englishFont2);
+//     textSize(15);
+//     text(getFormattedKoreanTime(), width / 2, height / 2 + 40);
+
+//     textSize(24);
+//     let liveText = "Live";
+//     let textW = textWidth(liveText);
+//     let boxW = textW + 40;
+//     let boxH = 42;
+//     let boxX = width / 2 - boxW / 2;
+//     let boxY = height / 2 + 100;
+
+//     stroke(255);
+//     strokeWeight(2);
+//     noFill();
+//     rect(boxX, boxY, boxW, boxH, 20);
+
+//     strokeWeight(0.1);
+//     fill(255);
+//     text(liveText, width / 2, boxY + boxH / 4 + 5);
+
+//     // 풀스크린이 아닐 때만 버튼 hover 커서 변경
+//     if (!fullscreen()) {
+//         if (mouseX > boxX && mouseX < boxX + boxW && mouseY > boxY && mouseY < boxY + boxH) {
+//             cursor(HAND);
+//         } else {
+//             cursor(ARROW);
+//         }
+//     }
+
+//     strokeWeight(0.3);
+//     textSize(18);
+//     text("* This site works only on desktop versions of Firefox and Chrome", width / 2, height / 2 + 230);
+// }
+
+function hit(mx, my, r) {
+    if (!r) return false;
+    return (mx > r.x && mx < r.x + r.w && my > r.y && my < r.y + r.h);
 }
 
 function drawMainVisualization() {
