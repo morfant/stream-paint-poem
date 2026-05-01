@@ -25,7 +25,9 @@ let DOT_TOP_COLOR = [0, 100, 200, 10];// 위쪽(잔상/그림자) 색상 RGBA
 
 // ■ 텍스트 표시 타이밍
 let FIRST_MESSAGE_DELAY_SEC = 60;     // 첫 문장 지연(초)
+// let FIRST_MESSAGE_DELAY_SEC = 5;     // 첫 문장 지연(초) for Test
 let MESSAGE_INTERVAL_SEC = 10;        // 문장 간격(초)
+// let MESSAGE_INTERVAL_SEC = 5;        // 문장 간격(초) for Test
 let MESSAGE_PRINT_FRAMES = 30;        // 문장 보여주는 프레임 수 (FPS 기반)
 
 // ■ 오디오 페이드
@@ -33,6 +35,9 @@ let START_FADE_IN_MS = 8000;          // 최초/리셋 시 오디오 페이드�
 let FFT_TAP_GAIN = 0.5;               // FFT 분석용 테핑 게인(듣기 음량과 별개)
 let OUTPUT_START_GAIN = 0.0;          // 출력 게인 시작 값(무음 권장)
 let ENABLE_FADE_IN_ON_RESET = false;  // 리셋 때도 페이드인을 적용할지
+
+// ■ 자막
+let SUBTITLE_DELAY_SEC = 0.5;         // 메인 텍스트 등장 후 자막 딜레이(초)
 
 // ■ 폰트/텍스트 리소스
 let MSG_SIZE = 30;
@@ -78,6 +83,10 @@ let canvas;
 let messageCount = 0;          // 출력된 문장 수
 let allMessagesShown = false;  // 모든 문장 1회 출력 완료 여부
 let cycleStartMillis = 0;      // 사이클 기준 타이머
+
+let subtitleMessage = "";
+let subtitleEl;
+let subtitleTimeout = null;
 
 
 let ui = {
@@ -151,6 +160,15 @@ function setup() {
 
     sentences = sentencesKOR;
 
+    subtitleEl = createElement('div', '');
+    subtitleEl.style('position', 'fixed');
+    subtitleEl.style('bottom', '130px');
+    subtitleEl.style('left', '0');
+    subtitleEl.style('width', '100%');
+    subtitleEl.style('text-align', 'center');
+    subtitleEl.style('color', 'white');
+    subtitleEl.style('font-size', '35px');
+    subtitleEl.style('pointer-events', 'none');
 }
 
 function toggleFullscreen() {
@@ -191,6 +209,9 @@ function resetMessageStateOnly() {
     messageCount = 0;
     allMessagesShown = false;
     currentMessage = "";
+    subtitleMessage = "";
+    if (subtitleTimeout) { clearTimeout(subtitleTimeout); subtitleTimeout = null; }
+    updateSubtitleEl();
     lastMessageFrame = -1000;
     lastMessageX = null;
 }
@@ -276,6 +297,9 @@ function resetScene() {
     messageCount = 0;
     allMessagesShown = false;
     currentMessage = "";
+    subtitleMessage = "";
+    if (subtitleTimeout) { clearTimeout(subtitleTimeout); subtitleTimeout = null; }
+    updateSubtitleEl();
     lastMessageFrame = -1000;
     lastMessageX = null;
 
@@ -525,6 +549,7 @@ function drawCurrentMessage() {
     if (sentenceIndex === 0) {
         if (elapsedSeconds >= FIRST_MESSAGE_DELAY_SEC && currentMessage === "") {
             currentMessage = sentences[sentenceIndex];
+            scheduleSubtitle(currentMessage);
             lastMessageFrame = frameCount;
             lastMessageX = width - cnt;
             sentenceIndex = (sentenceIndex + 1) % sentences.length;
@@ -537,6 +562,7 @@ function drawCurrentMessage() {
         let intervalFrames = FPS * MESSAGE_INTERVAL_SEC;
         if ((frameCount - lastMessageFrame) >= intervalFrames && sentences.length > 0) {
             currentMessage = sentences[sentenceIndex];
+            scheduleSubtitle(currentMessage);
             lastMessageFrame = frameCount;
             lastMessageX = width - cnt;
             sentenceIndex = (sentenceIndex + 1) % sentences.length;
@@ -560,6 +586,23 @@ function drawCurrentMessage() {
         text(currentMessage, 0, 0);
         pop();
     }
+}
+
+function scheduleSubtitle(msg) {
+    if (subtitleTimeout) { clearTimeout(subtitleTimeout); subtitleTimeout = null; }
+    subtitleTimeout = setTimeout(() => {
+        subtitleMessage = msg;
+        updateSubtitleEl();
+        subtitleTimeout = null;
+    }, SUBTITLE_DELAY_SEC * 1000);
+}
+
+function updateSubtitleEl() {
+    if (!subtitleEl) return;
+    subtitleEl.html(subtitleMessage);
+    subtitleEl.style('font-family', /[ㄱ-ㆎ가-힣]/.test(subtitleMessage)
+        ? "'AppleMyungjo', serif"
+        : "'Times New Roman', Times, serif");
 }
 
 function maxIndex(arr) {
