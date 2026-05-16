@@ -37,7 +37,7 @@ let OUTPUT_START_GAIN = 0.0;          // 출력 게인 시작 값(무음 권장)
 let ENABLE_FADE_IN_ON_RESET = false;  // 리셋 때도 페이드인을 적용할지
 
 // ■ 자막
-let SHOW_SUBTITLE = false;             // 자막 표시 여부 (true/false)
+let SHOW_SUBTITLE = true;             // 자막 표시 여부 (true/false)
 let SUBTITLE_DELAY_SEC = 0.5;         // 메인 텍스트 등장 후 자막 딜레이(초)
 
 // ■ 폰트/텍스트 리소스
