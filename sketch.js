@@ -24,10 +24,9 @@ let DOT_COLOR = [0, 100, 200, 50];    // 메인 점 색상 RGBA
 let DOT_TOP_COLOR = [0, 100, 200, 10];// 위쪽(잔상/그림자) 색상 RGBA
 
 // ■ 텍스트 표시 타이밍
-let FIRST_MESSAGE_DELAY_SEC = 60;     // 첫 문장 지연(초)
-// let FIRST_MESSAGE_DELAY_SEC = 5;     // 첫 문장 지연(초) for Test
-let MESSAGE_INTERVAL_SEC = 10;        // 문장 간격(초)
-// let MESSAGE_INTERVAL_SEC = 5;        // 문장 간격(초) for Test
+// let FIRST_MESSAGE_DELAY_SEC = 60;     // 첫 문장 지연(초)
+let FIRST_MESSAGE_DELAY_SEC = 5;     // 첫 문장 지연(초) for Test
+let MESSAGE_INTERVAL_SEC = 5;         // chunk 한 줄당 노출 시간(초)
 let MESSAGE_PRINT_FRAMES = 30;        // 문장 보여주는 프레임 수 (FPS 기반)
 
 // ■ 오디오 페이드
@@ -38,7 +37,8 @@ let ENABLE_FADE_IN_ON_RESET = false;  // 리셋 때도 페이드인을 적용할
 
 // ■ 자막
 let SHOW_SUBTITLE = true;             // 자막 표시 여부 (true/false)
-let SUBTITLE_DELAY_SEC = 0.5;         // 메인 텍스트 등장 후 자막 딜레이(초)
+let SUBTITLE_DELAY_SEC = 0.8;         // 메인 텍스트 등장 후 자막 딜레이(초)
+let SUBTITLE_COLOR = 'rgba(255, 255, 255, 0.5)'; // 자막 색 (예: 'white', 'rgba(255,255,255,0.7)')
 
 // ■ 폰트/텍스트 리소스
 let MSG_SIZE = 30;
@@ -110,6 +110,10 @@ function preload() {
 }
 
 function setup() {
+    // KOR/ENG: '/' 기준으로 chunk 분리 (chunk 원본 보존 - 빈 줄까지 라인 카운트용)
+    sentencesKOR = sentencesKOR.join('\n').split('/').filter(s => s.trim().length > 0);
+    sentencesENG = sentencesENG.join('\n').split('/').filter(s => s.trim().length > 0);
+
     // 비율 유지 크기 계산
     let w = windowWidth;
     let h = windowHeight;
@@ -170,7 +174,7 @@ function setup() {
     subtitleEl.style('left', '0');
     subtitleEl.style('width', '100%');
     subtitleEl.style('text-align', 'center');
-    subtitleEl.style('color', 'white');
+    subtitleEl.style('color', SUBTITLE_COLOR);
     subtitleEl.style('font-size', '35px');
     subtitleEl.style('pointer-events', 'none');
     if (!SHOW_SUBTITLE) subtitleEl.style('display', 'none');
@@ -566,7 +570,7 @@ function drawCurrentMessage() {
             noStroke();
             textSize(MSG_SIZE);
             textAlign(LEFT, CENTER);
-            text(currentMessage, 0, 0);
+            text(currentMessage.replace(/\n/g, ' ').trim(), 0, 0);
             pop();
         }
         return; // ★ 새 문장 생성/스케줄링 로직으로 내려가지 않음
@@ -578,7 +582,7 @@ function drawCurrentMessage() {
     if (sentenceIndex === 0) {
         if (elapsedSeconds >= FIRST_MESSAGE_DELAY_SEC && currentMessage === "") {
             currentMessage = sentences[sentenceIndex];
-            scheduleSubtitle(currentMessage);
+            syncSubtitleToCurrentMessage();
             lastMessageFrame = frameCount;
             lastMessageX = width - cnt;
             sentenceIndex = (sentenceIndex + 1) % sentences.length;
@@ -588,10 +592,11 @@ function drawCurrentMessage() {
             if (messageCount >= sentences.length) allMessagesShown = true;
         }
     } else {
-        let intervalFrames = FPS * MESSAGE_INTERVAL_SEC;
+        let lineCount = ((currentMessage || "").match(/\n/g) || []).length + 1;
+        let intervalFrames = FPS * MESSAGE_INTERVAL_SEC * lineCount;
         if ((frameCount - lastMessageFrame) >= intervalFrames && sentences.length > 0) {
             currentMessage = sentences[sentenceIndex];
-            scheduleSubtitle(currentMessage);
+            syncSubtitleToCurrentMessage();
             lastMessageFrame = frameCount;
             lastMessageX = width - cnt;
             sentenceIndex = (sentenceIndex + 1) % sentences.length;
@@ -612,13 +617,15 @@ function drawCurrentMessage() {
         noStroke();
         textSize(MSG_SIZE);
         textAlign(LEFT, CENTER);
-        text(currentMessage, 0, 0);
+        text(currentMessage.replace(/\n/g, ' '), 0, 0);
         pop();
     }
 }
 
-function scheduleSubtitle(msg) {
+// 메인 텍스트 1개당 자막 1개 동기화 (SUBTITLE_DELAY_SEC 후)
+function syncSubtitleToCurrentMessage() {
     if (!SHOW_SUBTITLE) return;
+    const msg = (currentMessage || "").trim().replace(/\n/g, '<br>');
     if (subtitleTimeout) { clearTimeout(subtitleTimeout); subtitleTimeout = null; }
     subtitleTimeout = setTimeout(() => {
         subtitleMessage = msg;
