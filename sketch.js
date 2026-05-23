@@ -89,6 +89,9 @@ let subtitleMessage = "";
 let subtitleEl;
 let subtitleTimeout = null;
 
+let emailLinkEl;
+let copyrightEl;
+
 
 let ui = {
     kor: null,
@@ -171,6 +174,27 @@ function setup() {
     subtitleEl.style('font-size', '35px');
     subtitleEl.style('pointer-events', 'none');
     if (!SHOW_SUBTITLE) subtitleEl.style('display', 'none');
+
+    emailLinkEl = createA('mailto:weatherreport.live@gmail.com', 'weatherreport.live@gmail.com');
+    emailLinkEl.style('position', 'fixed');
+    emailLinkEl.style('left', '50%');
+    emailLinkEl.style('top', 'calc(50% + 290px)');
+    emailLinkEl.style('transform', 'translate(-50%, -50%)');
+    emailLinkEl.style('color', 'white');
+    emailLinkEl.style('font-family', "'NotoSansKR-Thin', 'Times New Roman', serif");
+    emailLinkEl.style('font-size', '18px');
+    emailLinkEl.style('text-decoration', 'underline');
+    emailLinkEl.style('z-index', '10');
+
+    copyrightEl = createElement('div', '© 2025-2026 Weather Report (Jiyeon Kim, Gangil Yi)');
+    copyrightEl.style('position', 'fixed');
+    copyrightEl.style('left', '20px');
+    copyrightEl.style('bottom', '20px');
+    copyrightEl.style('color', 'white');
+    copyrightEl.style('font-family', "'NotoSansKR-Thin', 'Times New Roman', serif");
+    copyrightEl.style('font-size', '16px');
+    copyrightEl.style('pointer-events', 'none');
+    copyrightEl.style('z-index', '10');
 }
 
 function toggleFullscreen() {
@@ -264,6 +288,8 @@ function startAudio() {
     started = true;
     startTime = new Date();
     cycleStartMillis = millis(); // 사이클 타이머 시작
+    if (emailLinkEl) emailLinkEl.style('display', 'none');
+    if (copyrightEl) copyrightEl.style('display', 'none');
     fullscreen(true);
 }
 
@@ -361,9 +387,9 @@ function drawStartScreen() {
     textSize(30);
     text("Some-bodies are listening, too", width / 2, height / 2 - 220);
 
-    textFont(englishFont2);
-    textSize(20);
-    text("Jiyeon Kim, Gangil Yi", width / 2, height / 2 - 150);
+    // textFont(englishFont2);
+    // textSize(20);
+    // text("Jiyeon Kim, Gangil Yi", width / 2, height / 2 - 150);
 
     textFont(englishFont2);
     textSize(25);
@@ -423,6 +449,7 @@ function drawStartScreen() {
     fill(255);
     textSize(18);
     text("* This site works only on desktop versions of Firefox and Chrome", width / 2, height / 2 + 230);
+    text("** For the intended layout and subtitle scale, please view at default browser zoom (100%)", width / 2, height / 2 + 260);
 }
 
 
