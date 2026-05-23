@@ -224,7 +224,7 @@ function setup() {
     emailLinkEl.style('text-decoration', 'underline');
     emailLinkEl.style('z-index', '10');
 
-    copyrightEl = createElement('div', '© 2025-2026 Weather Report (Jiyeon Kim, Gangil Yi)');
+    copyrightEl = createElement('div', '© 2025 - 2026 Weather Report (Jiyeon Kim, Gangil Yi)');
     copyrightEl.style('position', 'fixed');
     copyrightEl.style('left', '20px');
     copyrightEl.style('bottom', '20px');
