@@ -152,10 +152,38 @@ function setup() {
             fft.setInput(micGain);
         });
     } else {
-        audio = new Audio(AUDIO_URL);
+        // 라이브 스트림: 캐시된 청크를 loop하는 문제 방지 (cache-busting + loop OFF + 끊기면 재연결)
+        audio = new Audio(`${AUDIO_URL}?t=${Date.now()}`);
         audio.crossOrigin = "anonymous";
-        audio.loop = true;
+        audio.loop = false;
+        audio.preload = "none";
         document.body.appendChild(audio);
+
+        // 재연결 throttle: 폭주 방지 + 실패 시 점진적 backoff
+        const RECONNECT_BASE_MS = 1500;
+        const RECONNECT_MAX_MS = 15000;
+        let reconnectDelay = RECONNECT_BASE_MS;
+        let reconnectTimer = null;
+
+        const scheduleReconnect = () => {
+            if (reconnectTimer) return; // 이미 예약돼 있으면 무시
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                audio.src = `${AUDIO_URL}?t=${Date.now()}`;
+                audio.play()
+                    .then(() => { reconnectDelay = RECONNECT_BASE_MS; }) // 성공 시 지연 리셋
+                    .catch(() => {
+                        reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
+                        scheduleReconnect();
+                    });
+            }, reconnectDelay);
+        };
+
+        audio.addEventListener('ended', scheduleReconnect);
+        audio.addEventListener('stalled', scheduleReconnect);
+        audio.addEventListener('error', scheduleReconnect);
+        // 정상 재생 시작 시 backoff 리셋
+        audio.addEventListener('playing', () => { reconnectDelay = RECONNECT_BASE_MS; });
 
         let context = getAudioContext();
         source = context.createMediaElementSource(audio);
@@ -237,7 +265,7 @@ function windowResized() {
 function updateSubtitlePosition() {
     if (!subtitleEl) return;
     // 자막 상단을 캔버스 바닥 바로 아래(letterbox)에 고정 → 줄이 늘어도 아래로 자란다
-    const margin = 2;
+    const margin = 0;
     const topPx = (windowHeight + height) / 2 + margin;
     subtitleEl.style('bottom', 'auto');
     subtitleEl.style('top', topPx + 'px');
@@ -417,6 +445,10 @@ function drawStartScreen() {
     textFont(englishFont);
     textSize(30);
     text("Some-bodies are listening, too", width / 2, height / 2 - 220);
+
+    textFont(koreanFont);
+    textSize(28);
+    text("누군가 듣고 있어", width / 2, height / 2 - 160);
 
     // textFont(englishFont2);
     // textSize(20);
