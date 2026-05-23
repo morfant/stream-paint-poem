@@ -39,6 +39,7 @@ let ENABLE_FADE_IN_ON_RESET = false;  // 리셋 때도 페이드인을 적용할
 let SHOW_SUBTITLE = true;             // 자막 표시 여부 (true/false)
 let SUBTITLE_DELAY_SEC = 0.8;         // 메인 텍스트 등장 후 자막 딜레이(초)
 let SUBTITLE_COLOR = 'rgba(255, 255, 255, 0.5)'; // 자막 색 (예: 'white', 'rgba(255,255,255,0.7)')
+let SUBTITLE_BASE_FONT_PX = 25;       // 디자인 기준 너비(1280)에서의 자막 폰트 크기(px)
 
 // ■ 폰트/텍스트 리소스
 let MSG_SIZE = 30;
@@ -88,6 +89,7 @@ let cycleStartMillis = 0;      // 사이클 기준 타이머
 let subtitleMessage = "";
 let subtitleEl;
 let subtitleTimeout = null;
+let baseDevicePixelRatio = 1; // 브라우저 줌 감지용 기준값
 
 let emailLinkEl;
 let copyrightEl;
@@ -119,6 +121,8 @@ function setup() {
     let h = windowHeight;
     if (w / h > ASPECT_RATIO) w = h * ASPECT_RATIO;
     else h = w / ASPECT_RATIO;
+
+    baseDevicePixelRatio = window.devicePixelRatio || 1; // 초기 줌 기준값 저장
 
     canvas = createCanvas(w, h);
     canvas.position((windowWidth - w) / 2, (windowHeight - h) / 2);
@@ -175,7 +179,7 @@ function setup() {
     subtitleEl.style('width', '100%');
     subtitleEl.style('text-align', 'center');
     subtitleEl.style('color', SUBTITLE_COLOR);
-    subtitleEl.style('font-size', '35px');
+    updateSubtitleFontSize();
     subtitleEl.style('pointer-events', 'none');
     if (!SHOW_SUBTITLE) subtitleEl.style('display', 'none');
 
@@ -224,6 +228,17 @@ function windowResized() {
 
     // 가로폭 바뀌면 스케일 다시 계산
     visualizeMul = width * VISUALIZE_INTENSITY_MUL;
+    updateSubtitleFontSize();
+}
+
+function updateSubtitleFontSize() {
+    if (!subtitleEl) return;
+    // 브라우저 줌 시 devicePixelRatio가 올라가고 CSS px 기준 canvas width는 줄어드는데,
+    // 이 두 효과가 서로 상쇄돼 자막이 같은 크기로 유지된다.
+    // zoomFactor를 곱하면 줌한 만큼 자막도 커진다.
+    const zoomFactor = (window.devicePixelRatio || 1) / baseDevicePixelRatio;
+    const px = SUBTITLE_BASE_FONT_PX * width / 1280 * zoomFactor;
+    subtitleEl.style('font-size', px + 'px');
 }
 
 // function mousePressed() {
