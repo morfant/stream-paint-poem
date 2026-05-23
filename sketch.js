@@ -26,7 +26,8 @@ let DOT_TOP_COLOR = [0, 100, 200, 10];// 위쪽(잔상/그림자) 색상 RGBA
 // ■ 텍스트 표시 타이밍
 // let FIRST_MESSAGE_DELAY_SEC = 60;     // 첫 문장 지연(초)
 let FIRST_MESSAGE_DELAY_SEC = 5;     // 첫 문장 지연(초) for Test
-let MESSAGE_INTERVAL_SEC = 5;         // chunk 한 줄당 노출 시간(초)
+let MESSAGE_INTERVAL_SEC = 2;         // chunk 한 줄당 노출 시간(초)
+// let MESSAGE_INTERVAL_SEC = 5;         // chunk 한 줄당 노출 시간(초)
 let MESSAGE_PRINT_FRAMES = 30;        // 문장 보여주는 프레임 수 (FPS 기반)
 
 // ■ 오디오 페이드
@@ -174,12 +175,13 @@ function setup() {
 
     subtitleEl = createElement('div', '');
     subtitleEl.style('position', 'fixed');
-    subtitleEl.style('bottom', '130px');
     subtitleEl.style('left', '0');
     subtitleEl.style('width', '100%');
     subtitleEl.style('text-align', 'center');
     subtitleEl.style('color', SUBTITLE_COLOR);
+    subtitleEl.style('line-height', '1.3');
     updateSubtitleFontSize();
+    updateSubtitlePosition();
     subtitleEl.style('pointer-events', 'none');
     if (!SHOW_SUBTITLE) subtitleEl.style('display', 'none');
 
@@ -229,6 +231,16 @@ function windowResized() {
     // 가로폭 바뀌면 스케일 다시 계산
     visualizeMul = width * VISUALIZE_INTENSITY_MUL;
     updateSubtitleFontSize();
+    updateSubtitlePosition();
+}
+
+function updateSubtitlePosition() {
+    if (!subtitleEl) return;
+    // 자막 상단을 캔버스 바닥 바로 아래(letterbox)에 고정 → 줄이 늘어도 아래로 자란다
+    const margin = 2;
+    const topPx = (windowHeight + height) / 2 + margin;
+    subtitleEl.style('bottom', 'auto');
+    subtitleEl.style('top', topPx + 'px');
 }
 
 function updateSubtitleFontSize() {
