@@ -26,8 +26,10 @@ let DOT_TOP_COLOR = [0, 100, 200, 10];// 위쪽(잔상/그림자) 색상 RGBA
 // ■ 텍스트 표시 타이밍
 let FIRST_MESSAGE_DELAY_SEC = 60;     // 첫 문장 지연(초)
 // let FIRST_MESSAGE_DELAY_SEC = 5;     // 첫 문장 지연(초) for Test
+
 let MESSAGE_INTERVAL_SEC = 5;         // chunk 한 줄당 노출 시간(초)
 // let MESSAGE_INTERVAL_SEC = 2;         // chunk 한 줄당 노출 시간(초)
+
 let MESSAGE_PRINT_FRAMES = 30;        // 문장 보여주는 프레임 수 (FPS 기반)
 
 // ■ 오디오 페이드
