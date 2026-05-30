@@ -94,6 +94,9 @@ let subtitleEl;
 let subtitleTimeout = null;
 let baseDevicePixelRatio = 1; // 브라우저 줌 감지용 기준값
 
+let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 'thunder'
+let weatherTempC = null;
+
 let emailLinkEl;
 let copyrightEl;
 
@@ -202,6 +205,9 @@ function setup() {
     }
 
     sentences = sentencesKOR;
+
+    fetchWeather();
+    setInterval(fetchWeather, 10 * 60 * 1000); // 10분마다 갱신
 
     subtitleEl = createElement('div', '');
     subtitleEl.style('position', 'fixed');
@@ -452,13 +458,21 @@ function drawStartScreen() {
     textSize(28);
     text("누군가 듣고 있어", width / 2, height / 2 - 160);
 
+    // [아이콘 테스트용 — 필요시 주석 해제]
+    // const _iconTypes = ['clear', 'cloudy', 'rain', 'snow', 'fog', 'thunder'];
+    // const _testIcon = _iconTypes[Math.floor(millis() / 5000) % _iconTypes.length];
+    // drawWeatherIcon(width / 2, height / 2 - 98, _testIcon);
+
     // textFont(englishFont2);
     // textSize(20);
     // text("Jiyeon Kim, Gangil Yi", width / 2, height / 2 - 150);
 
     textFont(englishFont2);
     textSize(25);
-    text(getFormattedKoreanTime(), width / 2, height / 2 + 40);
+    noStroke();
+    fill(255);
+    const weatherSuffix = weatherIconType ? '  ·  ' + weatherIconType[0].toUpperCase() + weatherIconType.slice(1) : '';
+    text(getFormattedKoreanTime() + weatherSuffix, width / 2, height / 2 + 40);
 
     // --- Live (텍스트, 버튼 아님) ---
     textFont(englishFont2);
@@ -716,7 +730,159 @@ function maxIndex(arr) {
 }
 
 function getFormattedKoreanTime() {
+    const MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
     let now = new Date();
     now.setUTCHours(now.getUTCHours() + 9);
-    return `UTC+9 ${now.getUTCFullYear()}-${nf(now.getUTCMonth() + 1, 2)}-${nf(now.getUTCDate(), 2)} ${nf(now.getUTCHours(), 2)}:${nf(now.getUTCMinutes(), 2)}:${nf(now.getUTCSeconds(), 2)}`;
+    const h24  = now.getUTCHours();
+    const h12  = h24 % 12 || 12;
+    const ampm = h24 < 12 ? 'AM' : 'PM';
+    const min  = nf(now.getUTCMinutes(), 2);
+    return `${MONTHS[now.getUTCMonth()]} ${now.getUTCDate()}, ${now.getUTCFullYear()}, ${h12}:${min} ${ampm}  ·  Jeju Island`;
+}
+
+// ─── 날씨 API ────────────────────────────────────────────
+
+function fetchWeather() {
+    // Open-Meteo: 제주 제로 인근 좌표, API 키 불필요
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=33.499&longitude=126.531&current=weather_code,temperature_2m';
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            weatherTempC = Math.round(data.current.temperature_2m);
+            weatherIconType = wmoToIconType(data.current.weather_code);
+        })
+        .catch(() => {}); // 네트워크 실패 시 조용히 무시
+}
+
+function wmoToIconType(code) {
+    if (code <= 1)                                   return 'clear';
+    if (code <= 3)                                   return 'cloudy';
+    if (code === 45 || code === 48)                  return 'fog';
+    if ([71,73,75,77,85,86].includes(code))          return 'snow';
+    if ([95,96,99].includes(code))                   return 'thunder';
+    // 51-55 이슬비, 61-65 비, 80-82 소나기
+    return 'rain';
+}
+
+// ─── 날씨 아이콘 드로잉 ──────────────────────────────────
+
+function drawWeatherIcon(x, y, type) {
+    push();
+    translate(x, y);
+    stroke(255);
+    noFill();
+    strokeWeight(0.9);
+    strokeCap(ROUND);
+
+    const t = frameCount * 0.03;
+
+    if (type === 'clear')   drawIconClear(t);
+    if (type === 'cloudy')  drawIconCloudy(t);
+    if (type === 'rain')    drawIconRain(t);
+    if (type === 'snow')    drawIconSnow(t);
+    if (type === 'fog')     drawIconFog(t);
+    if (type === 'thunder') drawIconThunder(t);
+
+    pop();
+}
+
+// 맑음: 원 + 8개 방사선 (느리게 회전 + 길이 맥동)
+function drawIconClear(t) {
+    let r = 9;
+    ellipse(0, 0, r * 2);
+    let rayLen = 6 + sin(t * 1.4) * 2;
+    let rayGap = r + 5;
+    for (let i = 0; i < 8; i++) {
+        let a = TWO_PI / 8 * i + t * 0.04;
+        line(
+            cos(a) * rayGap, sin(a) * rayGap,
+            cos(a) * (rayGap + rayLen), sin(a) * (rayGap + rayLen)
+        );
+    }
+}
+
+// 흐림: 세 겹 호 (위아래 부드럽게 표류)
+function drawIconCloudy(t) {
+    let floatY = sin(t * 0.7) * 2.5;
+    push();
+    translate(0, floatY);
+    drawCloudBase();
+    pop();
+}
+
+// 클라우드 베이스 (비, 눈, 뇌우 공용)
+function drawCloudBase() {
+    arc(-9, 0, 22, 15, PI, TWO_PI);
+    arc(3,  -5, 26, 18, PI, TWO_PI);
+    arc(14,  0, 18, 13, PI, TWO_PI);
+    line(-20, 0, 23, 0);
+}
+
+// 비: 구름 + 대각 빗줄기 낙하 애니메이션
+function drawIconRain(t) {
+    push(); translate(0, -9); drawCloudBase(); pop();
+
+    let xs = [-14, -6, 2, 10, 18];
+    let period = 35;
+    for (let i = 0; i < xs.length; i++) {
+        let phase = (frameCount + i * 7) % period;
+        let prog = phase / period;
+        let dy = 4 + prog * 18;
+        let alpha = sin(prog * PI) * 255;
+        stroke(255, alpha);
+        line(xs[i], dy, xs[i] - 3, dy + 6);
+    }
+}
+
+// 눈: 구름 + 십자 눈송이 낙하 (약간 좌우 표류)
+function drawIconSnow(t) {
+    push(); translate(0, -9); drawCloudBase(); pop();
+
+    let xs = [-12, -2, 7, 16, -7];
+    let period = 55;
+    let s = 3.5;
+    for (let i = 0; i < xs.length; i++) {
+        let phase = (frameCount + i * 11) % period;
+        let prog = phase / period;
+        let dy = 4 + prog * 18;
+        let dx = xs[i] + sin(prog * TWO_PI + i * 1.3) * 2.5;
+        let alpha = sin(prog * PI) * 255;
+        stroke(255, alpha);
+        line(dx - s, dy, dx + s, dy);
+        line(dx, dy - s, dx, dy + s);
+    }
+}
+
+// 안개: 가로선 4개, 길이·위상 다르게 표류
+function drawIconFog(t) {
+    let layers = [
+        { y: -12, len: 38, phase: 0.0 },
+        { y:  -3, len: 28, phase: 1.1 },
+        { y:   6, len: 36, phase: 0.5 },
+        { y:  15, len: 22, phase: 1.8 },
+    ];
+    for (let l of layers) {
+        let xOff = sin(t * 0.7 + l.phase) * 4;
+        stroke(255, 200);
+        line(-l.len / 2 + xOff, l.y, l.len / 2 + xOff, l.y);
+    }
+}
+
+// 뇌우: 구름 + 번개 지그재그 (주기적으로 번쩍)
+function drawIconThunder(t) {
+    push(); translate(0, -9); drawCloudBase(); pop();
+
+    // 60프레임 중 6프레임만 표시 (번쩍 효과)
+    let flash = (frameCount % 60) < 6;
+    if (flash) {
+        strokeWeight(1.2);
+        stroke(255);
+        beginShape();
+        vertex(2,   4);
+        vertex(-5,  13);
+        vertex(0,   13);
+        vertex(-7,  24);
+        endShape();
+    }
 }
