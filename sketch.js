@@ -43,9 +43,12 @@ let SHOW_SUBTITLE = true;             // 자막 표시 여부 (true/false)
 let SUBTITLE_DELAY_SEC = 0.8;         // 메인 텍스트 등장 후 자막 딜레이(초)
 let SUBTITLE_COLOR = 'rgba(255, 255, 255, 0.5)'; // 자막 색 (예: 'white', 'rgba(255,255,255,0.7)')
 let SUBTITLE_BASE_FONT_PX = 25;       // 디자인 기준 너비(1280)에서의 자막 폰트 크기(px)
+let SUBTITLE_KOR_MUL = 0.9;           // 한글 자막 크기 배율
+let SUBTITLE_ENG_MUL = 1.0;           // 영어 자막 크기 배율
 
 // ■ 폰트/텍스트 리소스
-let MSG_SIZE = 30;
+let MSG_SIZE = 31;
+let MSG_SIZE_KOR_MUL = 0.8;   // 한글 메시지 크기 배율 (영어 대비). 1=동일, <1=한글 작게
 let SENTENCES_FILE_KOR = "sentences_KOR.txt";
 let SENTENCES_FILE_ENG = "sentences_ENG.txt";
 let FONT_KO = "fonts/AppleMyungjo.ttf";
@@ -87,6 +90,7 @@ let canvas;
 
 let messageCount = 0;          // 출력된 문장 수
 let allMessagesShown = false;  // 모든 문장 1회 출력 완료 여부
+let coolingDown = false;       // 마지막 문장 후 "텍스트 없는 스윕" 진행 중 여부
 let cycleStartMillis = 0;      // 사이클 기준 타이머
 
 let subtitleMessage = "";
@@ -285,7 +289,9 @@ function updateSubtitleFontSize() {
     // 이 두 효과가 서로 상쇄돼 자막이 같은 크기로 유지된다.
     // zoomFactor를 곱하면 줌한 만큼 자막도 커진다.
     const zoomFactor = (window.devicePixelRatio || 1) / baseDevicePixelRatio;
-    const px = SUBTITLE_BASE_FONT_PX * width / 1280 * zoomFactor;
+    // 자막 언어에 따라 한/영 배율 따로 적용
+    const langMul = /[ㄱ-ㆎ가-힣]/.test(subtitleMessage) ? SUBTITLE_KOR_MUL : SUBTITLE_ENG_MUL;
+    const px = SUBTITLE_BASE_FONT_PX * width / 1280 * zoomFactor * langMul;
     subtitleEl.style('font-size', px + 'px');
 }
 
@@ -301,6 +307,7 @@ function resetMessageStateOnly() {
     sentenceIndex = 0;
     messageCount = 0;
     allMessagesShown = false;
+    coolingDown = false;
     currentMessage = "";
     subtitleMessage = "";
     if (subtitleTimeout) { clearTimeout(subtitleTimeout); subtitleTimeout = null; }
@@ -391,6 +398,7 @@ function resetScene() {
     sentenceIndex = 0;
     messageCount = 0;
     allMessagesShown = false;
+    coolingDown = false;
     currentMessage = "";
     subtitleMessage = "";
     if (subtitleTimeout) { clearTimeout(subtitleTimeout); subtitleTimeout = null; }
@@ -429,7 +437,19 @@ function draw() {
         // 스캔이 왼쪽 끝까지 도달했을 때 처리
         if (cnt >= width) {
             if (allMessagesShown) {
-                resetScene(); // 모든 문장 1회 표시 완료 후엔 전체 리셋
+                if (!coolingDown) {
+                    // 마지막 문장까지 끝난 첫 경계: 텍스트 없이 한 바퀴 더 흘려보냄
+                    coolingDown = true;
+                    fadeOutCounter = 30;
+                    cnt = 0;
+                    // 남은 메시지/자막 제거 → 이 스윕은 완전히 텍스트 없음
+                    currentMessage = "";
+                    subtitleMessage = "";
+                    if (subtitleTimeout) { clearTimeout(subtitleTimeout); subtitleTimeout = null; }
+                    updateSubtitleEl();
+                } else {
+                    resetScene(); // 빈 스윕 한 바퀴까지 끝나면 전체 리셋
+                }
             } else {
                 fadeOutCounter = 30; // 다음 스윕을 위한 페이드
                 cnt = 0;
@@ -471,7 +491,9 @@ function drawStartScreen() {
     textSize(25);
     noStroke();
     fill(255);
-    const weatherSuffix = weatherIconType ? '  ·  ' + weatherIconType[0].toUpperCase() + weatherIconType.slice(1) : '';
+    const weatherSuffix = weatherIconType
+        ? '  ·  ' + weatherIconType[0].toUpperCase() + weatherIconType.slice(1)
+        : '  ·  ' + '- - - - -'; // 데이터 대기 중: 대시 placeholder (도착하면 날씨 이름으로 교체)
     text(getFormattedKoreanTime() + weatherSuffix, width / 2, height / 2 + 40);
 
     // --- Live (텍스트, 버튼 아님) ---
@@ -643,7 +665,7 @@ function drawCurrentMessage() {
             const a = constrain((frameCount - lastMessageFrame) / MESSAGE_PRINT_FRAMES * 255, 0, 255);
             fill(0, 0, 0, a);
             noStroke();
-            textSize(MSG_SIZE);
+            textSize(MSG_SIZE * (/[ㄱ-ㆎ|가-힣]/.test(currentMessage) ? MSG_SIZE_KOR_MUL : 1));
             textAlign(LEFT, CENTER);
             text(currentMessage.replace(/\n/g, ' ').trim(), 0, 0);
             pop();
@@ -690,7 +712,7 @@ function drawCurrentMessage() {
         const a = constrain((frameCount - lastMessageFrame) / MESSAGE_PRINT_FRAMES * 255, 0, 255);
         fill(0, 0, 0, a);
         noStroke();
-        textSize(MSG_SIZE);
+        textSize(MSG_SIZE * (/[ㄱ-ㆎ|가-힣]/.test(currentMessage) ? MSG_SIZE_KOR_MUL : 1));
         textAlign(LEFT, CENTER);
         text(currentMessage.replace(/\n/g, ' '), 0, 0);
         pop();
@@ -715,6 +737,7 @@ function updateSubtitleEl() {
     subtitleEl.style('font-family', /[ㄱ-ㆎ가-힣]/.test(subtitleMessage)
         ? "'AppleMyungjo', serif"
         : "'Times New Roman', Times, serif");
+    updateSubtitleFontSize(); // 언어별 배율 반영 위해 크기 재계산
 }
 
 function maxIndex(arr) {
