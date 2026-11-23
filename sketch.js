@@ -50,7 +50,7 @@ let SUBTITLE_RESERVE_LINES = 2;       // 캔버스 아래 여백이 이 줄 수�
 
 // ■ 작은 화면 대응
 let DESIGN_W = 1280;                  // 캔버스가 이보다 좁으면 이 폭 기준으로 그린 뒤 축소 (넓으면 그대로)
-let START_DESIGN_W = 820, START_DESIGN_H = 560; // 시작 화면이 잘리지 않는 최소 크기(이보다 작으면 축소)
+let START_DESIGN_W = 820, START_DESIGN_H = 680; // 시작 화면이 잘리지 않는 최소 크기(이보다 작으면 축소)
 
 // ■ 폰트/텍스트 리소스
 let MSG_SIZE = 31;
@@ -430,7 +430,7 @@ function updateScale() {
 // 시작 화면의 HTML 요소(이메일·저작권)도 시작 화면 배율에 맞춤
 function updateStartDomLayout() {
     if (emailLinkEl) {
-        emailLinkEl.style('top', `calc(50% + ${290 * SS}px)`);
+        emailLinkEl.style('top', `calc(50% + ${324 * SS}px)`);
         emailLinkEl.style('font-size', Math.max(11, 18 * SS) + 'px');
     }
     if (copyrightEl) {
@@ -799,8 +799,13 @@ function drawStartScreen() {
     strokeWeight(0.3);
     fill(255);
     textSize(18);
-    text("* Works on desktop and mobile browsers. On a phone, landscape view is recommended", width / 2, height / 2 + 230);
-    text("** For the intended layout and subtitle scale, please view at default browser zoom (100%)", width / 2, height / 2 + 260);
+    text("* Works on desktop and mobile browsers. On a phone, landscape view is recommended", width / 2, height / 2 + 216);
+    textSize(16);
+    text("* 데스크톱과 모바일 브라우저에서 볼 수 있습니다. 휴대폰은 가로 화면을 권장합니다.", width / 2, height / 2 + 240);
+    textSize(18);
+    text("** For the intended layout and subtitle scale, please view at default browser zoom (100%)", width / 2, height / 2 + 268);
+    textSize(16);
+    text("** 의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", width / 2, height / 2 + 292);
     pop();
 }
 
