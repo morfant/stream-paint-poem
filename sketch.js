@@ -127,12 +127,14 @@ let ui = {
 function preload() {
     bootLog('preload');
     // 캐시 회피 쿼리 부착
-    sentencesKOR = loadStrings(`${SENTENCES_FILE_KOR}?${millis()}`);
-    sentencesENG = loadStrings(`${SENTENCES_FILE_ENG}?${millis()}`);
+    const ok = (n) => () => bootLog('loaded ' + n);
+    const fail = (n) => (e) => bootLog('FAIL ' + n + ' ' + (e && (e.message || e.type) || e));
+    sentencesKOR = loadStrings(`${SENTENCES_FILE_KOR}?${millis()}`, ok('KOR txt'), fail('KOR txt'));
+    sentencesENG = loadStrings(`${SENTENCES_FILE_ENG}?${millis()}`, ok('ENG txt'), fail('ENG txt'));
 
-    koreanFont = loadFont(FONT_KO);
-    englishFont = loadFont(FONT_EN);
-    englishFont2 = loadFont(FONT_EN_THIN);
+    koreanFont = loadFont(FONT_KO, ok('font KO'), fail('font KO'));
+    englishFont = loadFont(FONT_EN, ok('font EN'), fail('font EN'));
+    englishFont2 = loadFont(FONT_EN_THIN, ok('font EN thin'), fail('font EN thin'));
 }
 
 function setup() {
@@ -339,6 +341,7 @@ function computeCanvasLayout() {
 }
 
 function windowResized() {
+    bootLog('resize ' + windowWidth + 'x' + windowHeight);
     const lay = computeCanvasLayout();
     resizeCanvas(lay.w, lay.h);
     canvas.position(lay.x, lay.y);
