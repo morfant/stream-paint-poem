@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- 홈 화면에 추가해서 열면 주소창 없이 꽉 찬 화면 (iOS/Android) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="누군가 듣고 있어" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="manifest.json" />
     <title>some-bodies are listening, too</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
@@ -23,6 +30,7 @@
             align-items: center;
             justify-content: center;
             height: 100vh;      /* 화면 높이 기준 정렬 */
+            height: 100dvh;     /* iOS: 주소창 제외한 실제 보이는 높이 */
             overflow: hidden;
         }
 

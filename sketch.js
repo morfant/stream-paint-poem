@@ -46,6 +46,7 @@ let SUBTITLE_BASE_FONT_PX = 25;       // 디자인 기준 너비(1280)에서의 
 let SUBTITLE_KOR_MUL = 0.9;           // 한글 자막 크기 배율
 let SUBTITLE_ENG_MUL = 1.0;           // 영어 자막 크기 배율
 let SUBTITLE_MIN_FONT_PX = 12;        // 작은 화면(모바일)에서 자막 최소 크기(px)
+let SUBTITLE_RESERVE_LINES = 2;       // 캔버스 아래 여백이 이 줄 수보다 좁으면(폰 가로) 캔버스를 줄여 자막 자리 확보
 
 // ■ 작은 화면 대응
 let DESIGN_W = 1280;                  // 캔버스가 이보다 좁으면 이 폭 기준으로 그린 뒤 축소 (넓으면 그대로)
@@ -107,6 +108,7 @@ let baseDevicePixelRatio = 1; // 브라우저 줌 감지용 기준값
 
 // 작은 화면 축소 배율: 시각화는 S(가상 크기 VW×VH), 시작 화면은 SS
 let S = 1, VW = 0, VH = 0, SS = 1;
+let canvasTop = 0;            // 캔버스 위쪽 위치(px) — 자막 위치 기준
 
 let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 'thunder'
 let weatherTempC = null;
@@ -137,16 +139,14 @@ function setup() {
     sentencesKOR = sentencesKOR.join('\n').split('/').filter(s => s.trim().length > 0);
     sentencesENG = sentencesENG.join('\n').split('/').filter(s => s.trim().length > 0);
 
-    // 비율 유지 크기 계산
-    let w = windowWidth;
-    let h = windowHeight;
-    if (w / h > ASPECT_RATIO) w = h * ASPECT_RATIO;
-    else h = w / ASPECT_RATIO;
+    // 비율 유지 크기 계산 (+ 자막 자리 확보)
+    const lay = computeCanvasLayout();
 
     baseDevicePixelRatio = window.devicePixelRatio || 1; // 초기 줌 기준값 저장
 
-    canvas = createCanvas(w, h);
-    canvas.position((windowWidth - w) / 2, (windowHeight - h) / 2);
+    canvas = createCanvas(lay.w, lay.h);
+    canvas.position(lay.x, lay.y);
+    canvasTop = lay.y;
     canvas.style('display', 'block');
     background(BG_COLOR);
 
@@ -310,14 +310,34 @@ function keyPressed() {
     }
 }
 
-function windowResized() {
-    let w = windowWidth;
-    let h = windowHeight;
+// 캔버스 크기·위치: 비율 유지로 화면에 맞추되, 아래 여백이 자막 자리(SUBTITLE_RESERVE_LINES 줄)보다
+// 좁으면(폰 가로 모드 등) 캔버스를 줄이고 [캔버스+자막]을 한 덩어리로 세로 가운데 정렬.
+// 여백이 충분하면(데스크톱) 기존처럼 화면 가운데.
+function computeCanvasLayout() {
+    const W = windowWidth, H = windowHeight;
+    let w = W, h = H;
     if (w / h > ASPECT_RATIO) w = h * ASPECT_RATIO;
     else h = w / ASPECT_RATIO;
+    if (!SHOW_SUBTITLE) return { w, h, x: (W - w) / 2, y: (H - h) / 2 };
 
-    resizeCanvas(w, h);
-    canvas.position((windowWidth - w) / 2, (windowHeight - h) / 2);
+    const subPx = (cw) => Math.max(SUBTITLE_MIN_FONT_PX, SUBTITLE_BASE_FONT_PX * cw / 1280);
+    let reserve = SUBTITLE_RESERVE_LINES * 1.3 * subPx(w) + 6;
+    if ((H - h) / 2 >= reserve) return { w, h, x: (W - w) / 2, y: (H - h) / 2 };
+
+    if (H - h < reserve) {
+        h = Math.max(50, H - reserve);
+        w = Math.min(W, h * ASPECT_RATIO);
+        h = w / ASPECT_RATIO;
+        reserve = SUBTITLE_RESERVE_LINES * 1.3 * subPx(w) + 6;
+    }
+    return { w, h, x: (W - w) / 2, y: Math.max(0, (H - h - reserve) / 2) };
+}
+
+function windowResized() {
+    const lay = computeCanvasLayout();
+    resizeCanvas(lay.w, lay.h);
+    canvas.position(lay.x, lay.y);
+    canvasTop = lay.y;
     background(BG_COLOR);
 
     // 가로폭 바뀌면 스케일 다시 계산
@@ -366,7 +386,7 @@ function updateSubtitlePosition() {
     if (!subtitleEl) return;
     // 자막 상단을 캔버스 바닥 바로 아래(letterbox)에 고정 → 줄이 늘어도 아래로 자란다
     const margin = 0;
-    const topPx = (windowHeight + height) / 2 + margin;
+    const topPx = canvasTop + height + margin;
     subtitleEl.style('bottom', 'auto');
     subtitleEl.style('top', topPx + 'px');
 }

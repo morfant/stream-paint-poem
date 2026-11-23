@@ -1,0 +1,10 @@
+{
+  "name": "some-bodies are listening, too · 누군가 듣고 있어",
+  "short_name": "누군가 듣고 있어",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}
