@@ -56,9 +56,9 @@ let MSG_SIZE = 31;
 let MSG_SIZE_KOR_MUL = 0.8;   // 한글 메시지 크기 배율 (영어 대비). 1=동일, <1=한글 작게
 let SENTENCES_FILE_KOR = "sentences_KOR.txt";
 let SENTENCES_FILE_ENG = "sentences_ENG.txt";
-let FONT_KO = "fonts/AppleMyungjo.ttf";
-let FONT_EN = "fonts/Times New Roman.ttf";
-let FONT_EN_THIN = "fonts/NotoSansKR-Thin.otf";
+let FONT_KO = "fonts/web/AppleMyungjo.ttf";       // 웹용 서브셋 (tools/subset_fonts.py 로 생성)
+let FONT_EN = "fonts/web/Times New Roman.ttf";
+let FONT_EN_THIN = "fonts/web/NotoSansKR-Thin.otf";
 
 /**********************
  * 내부 상태/런타임 변수 (수정 비권장)
