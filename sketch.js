@@ -140,6 +140,17 @@ function preload() {
 function setup() {
     bootLog('setup start');
     getAudioContext().addEventListener('statechange', () => bootLog('ctx ' + getAudioContext().state));
+
+    // iOS: 소리 허용(사용자 활성화)은 touchstart가 아니라 touchend/click 에서만 인정된다.
+    // 시작 화면은 touchStarted에서 넘어가지만, 오디오 컨텍스트 재개는 여기서(손을 뗄 때) 한다.
+    // 시작 후에도 계속 걸어 두어 전화·알림 등으로 끊긴 오디오를 탭 한 번으로 되살린다.
+    const unlockAudio = () => {
+        const c = getAudioContext();
+        if (c.state !== 'running') c.resume().then(() => bootLog('unlock → ' + c.state));
+        if (started && audio && audio.paused) audio.play().catch(() => {});
+    };
+    document.addEventListener('touchend', unlockAudio, true);
+    document.addEventListener('click', unlockAudio, true);
     // KOR/ENG: '/' 기준으로 chunk 분리 (chunk 원본 보존 - 빈 줄까지 라인 카운트용)
     sentencesKOR = sentencesKOR.join('\n').split('/').filter(s => s.trim().length > 0);
     sentencesENG = sentencesENG.join('\n').split('/').filter(s => s.trim().length > 0);
