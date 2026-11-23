@@ -177,6 +177,8 @@ registerProcessor('stream-decoder-processor', StreamDecoderProcessor);
         }
 
         _onAudioData(ad) {
+            // 컨텍스트가 멈춰 있으면(iOS 잠금·전화·제스처 대기) 워클릿이 소비하지 못하므로 버린다 → 메모리 누적 방지
+            if (this.ctx.state !== 'running') { ad.close(); this.status.dropped = (this.status.dropped || 0) + 1; return; }
             try {
                 const n = ad.numberOfFrames, chs = ad.numberOfChannels;
                 const l = new Float32Array(n);

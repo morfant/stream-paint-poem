@@ -493,7 +493,7 @@ function startAudio() {
         getAudioContext().resume().then(() => bootLog('ctx resume → ' + getAudioContext().state));
         if (audio) audio.play();               // 기존 방식은 제스처 안에서 바로 재생
         audioReady.then(() => {
-            if (streamDecoder) streamDecoder.start();
+            if (streamDecoder) startDecoderWhenRunning();
             else if (audio && audio.paused) audio.play();
         });
         fadeInAudio(START_FADE_IN_MS);
@@ -506,6 +506,20 @@ function startAudio() {
     if (portraitHintEl) portraitHintEl.style('display', 'none');
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
     if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) fullscreen(true);
+}
+
+// 디코더는 오디오 컨텍스트가 실제로 running 이 된 뒤에 시작 (iOS에서 resume이 늦게 풀리는 경우 대비)
+function startDecoderWhenRunning() {
+    const c = getAudioContext();
+    if (c.state === 'running') { streamDecoder.start(); return; }
+    bootLog('decoder waits for ctx running (now ' + c.state + ')');
+    const onState = () => {
+        if (c.state !== 'running') return;
+        c.removeEventListener('statechange', onState);
+        bootLog('decoder start (ctx running)');
+        streamDecoder.start();
+    };
+    c.addEventListener('statechange', onState);
 }
 
 function fadeInAudio(durationMillis = 3000) {
