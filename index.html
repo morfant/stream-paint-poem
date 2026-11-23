@@ -2,14 +2,63 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- 홈 화면에 추가해서 열면 주소창 없이 꽉 찬 화면 (iOS/Android) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="누군가 듣고 있어" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>some-bodies are listening, too</title>
+    <script>
+      // ?debug: 페이지가 열리자마자 단계·오류를 화면에 표시 (p5가 그리기 전에 멈춰도 보이도록)
+      (function () {
+        // 기록은 sessionStorage 에도 저장 → iOS가 탭을 죽이고 자동 새로고침해도 이전 실행 기록이 남는다
+        if (!/[?&]debug\b/.test(location.search)) { window.bootLog = function () {}; return; }
+        var KEY = 'bootlog', lines = [];
+        try { lines = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) {}
+        var run = 1 + lines.filter(function (l) { return / boot /.test(l); }).length;
+        function show() {
+          var el = document.getElementById('bootlog');
+          if (!el) {
+            el = document.createElement('pre'); el.id = 'bootlog';
+            el.style.cssText = 'position:fixed;left:4px;bottom:4px;margin:0;color:#ff0;font-size:10px;z-index:100;pointer-events:none;background:rgba(0,0,0,.6);white-space:pre-wrap;max-width:95vw';
+            (document.body || document.documentElement).appendChild(el);
+          }
+          el.textContent = lines.slice(-24).join('\n');
+        }
+        window.bootLog = function (m) {
+          lines.push('#' + run + ' ' + (performance.now() / 1000).toFixed(1) + 's ' + m);
+          if (lines.length > 200) lines = lines.slice(-200);
+          try { sessionStorage.setItem(KEY, JSON.stringify(lines)); } catch (e) {}
+          show();
+        };
+        window.addEventListener('error', function (e) { bootLog('ERR ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); }, true);
+        window.addEventListener('unhandledrejection', function (e) { bootLog('REJ ' + e.reason); });
+        document.addEventListener('visibilitychange', function () { bootLog('visibility ' + document.visibilityState); });
+        window.addEventListener('pagehide', function (e) { bootLog('pagehide persisted=' + e.persisted); });
+        bootLog('boot ' + (/OS [\d_]+/.exec(navigator.userAgent) || [''])[0] + ' nav=' + ((performance.getEntriesByType('navigation')[0] || {}).type));
+        window.addEventListener('DOMContentLoaded', show);
+      })();
+    </script>
+    <script>
+      // iOS: 무음 스위치와 상관없이 재생되도록 오디오 세션을 'playback'으로.
+      // 반드시 AudioContext(p5.sound가 로드되며 만듦)보다 먼저 — 나중에 바꾸면 컨텍스트가 끊겨 suspended로 남는다.
+      if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch (e) {} }
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+    <script src="stream-decoder.js"></script>
     <script src="sketch.js" defer></script>
     <style>
         @font-face {
             font-family: 'NotoSansKR-Thin';
-            src: url('fonts/NotoSansKR-Thin.otf') format('opentype');
+            src: url('fonts/web/NotoSansKR-Thin.otf') format('opentype');
             font-weight: 100;
             font-style: normal;
         }
@@ -21,6 +70,7 @@
             align-items: center;
             justify-content: center;
             height: 100vh;      /* 화면 높이 기준 정렬 */
+            height: 100dvh;     /* iOS: 주소창 제외한 실제 보이는 높이 */
             overflow: hidden;
         }
 
