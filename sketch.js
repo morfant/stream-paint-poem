@@ -532,7 +532,39 @@ function resetScene() {
     if (ENABLE_FADE_IN_ON_RESET && !USE_MIC_INPUT) fadeInAudio(START_FADE_IN_MS);
 }
 
+// ?debug: 폰에서 상태를 화면 왼쪽 위에 표시 (오디오 경로, 컨텍스트 상태, 분석값, 버퍼, 오류)
+const DEBUG = new URLSearchParams(location.search).has('debug');
+let debugEl = null, debugErrors = [];
+if (DEBUG) {
+    window.addEventListener('error', (e) => debugErrors.push(String(e.message)));
+    window.addEventListener('unhandledrejection', (e) => debugErrors.push('rej: ' + String(e.reason)));
+}
+function updateDebug() {
+    if (!DEBUG) return;
+    if (!debugEl) {
+        debugEl = createElement('pre', '');
+        debugEl.style('position', 'fixed'); debugEl.style('left', '4px'); debugEl.style('top', '4px');
+        debugEl.style('margin', '0'); debugEl.style('color', '#0f0'); debugEl.style('font-size', '10px');
+        debugEl.style('z-index', '99'); debugEl.style('pointer-events', 'none');
+        debugEl.style('background', 'rgba(0,0,0,0.6)');
+    }
+    if (frameCount % 15 !== 0) return;
+    let spec = '-';
+    try { spec = Math.max(...fft.analyze()); } catch (e) {}
+    const st = streamDecoder ? streamDecoder.status : null;
+    debugEl.html([
+        'path: ' + (streamDecoder ? 'decoder' : audio ? 'element' : 'none') + '  started: ' + started,
+        'ctx: ' + getAudioContext().state + ' @' + getAudioContext().sampleRate + '  spec: ' + spec,
+        st ? 'buf: ' + st.bufferedSec.toFixed(2) + 's  playing: ' + st.playing + '  conn: ' + st.connected + '  under: ' + st.underruns + '  reconn: ' + st.reconnects : '',
+        audio ? 'audio t: ' + audio.currentTime.toFixed(1) + ' paused: ' + audio.paused : '',
+        'canvas: ' + Math.round(width) + 'x' + Math.round(height) + ' top ' + Math.round(canvasTop) + '  win: ' + windowWidth + 'x' + windowHeight,
+        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext,
+        debugErrors.slice(-3).join('\n'),
+    ].filter(Boolean).join('\n'));
+}
+
 function draw() {
+    updateDebug();
     // 풀스크린일 때 커서 숨김, 아니면 표시
     if (fullscreen()) noCursor();
     else cursor(ARROW);
