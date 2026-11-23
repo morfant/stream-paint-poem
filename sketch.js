@@ -139,6 +139,7 @@ function preload() {
 
 function setup() {
     bootLog('setup start');
+    getAudioContext().addEventListener('statechange', () => bootLog('ctx ' + getAudioContext().state));
     // KOR/ENG: '/' 기준으로 chunk 분리 (chunk 원본 보존 - 빈 줄까지 라인 카운트용)
     sentencesKOR = sentencesKOR.join('\n').split('/').filter(s => s.trim().length > 0);
     sentencesENG = sentencesENG.join('\n').split('/').filter(s => s.trim().length > 0);
@@ -462,7 +463,10 @@ function mousePressed() {
         return;
     }
 
-    // 시작 후(기존 동작 유지): 필요하면 여기에서 추가 동작
+    // 시작 후: 오디오가 멈춰 있으면(iOS 전화·알림·세션 끊김 등) 탭으로 다시 깨움
+    if (getAudioContext().state !== 'running') {
+        getAudioContext().resume().then(() => bootLog('tap resume → ' + getAudioContext().state));
+    }
 }
 
 function touchStarted() {
@@ -474,9 +478,8 @@ function startAudio() {
     bootLog('startAudio');
     background(BG_COLOR);
     if (!USE_MIC_INPUT) {
-        // iOS: Web Audio도 무음 스위치와 상관없이 재생되도록 (Safari 16.4+)
-        if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch (e) {} }
-        getAudioContext().resume();
+        // (iOS 오디오 세션 'playback' 설정은 index.html에서 AudioContext 생성 전에 함)
+        getAudioContext().resume().then(() => bootLog('ctx resume → ' + getAudioContext().state));
         if (audio) audio.play();               // 기존 방식은 제스처 안에서 바로 재생
         audioReady.then(() => {
             if (streamDecoder) streamDecoder.start();
