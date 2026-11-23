@@ -90,6 +90,7 @@ let jitterAngle = 0;
 let loopCount = 0;
 
 let koreanFont, englishFont, englishFont2;
+let assetsReady = false;    // 텍스트·폰트 로드 완료 (loadAssets)
 let graphPoints = [];
 
 let fadeOutCounter = 0;
@@ -126,19 +127,49 @@ let ui = {
 
 function preload() {
     bootLog('preload');
-    // 캐시 회피 쿼리 부착
-    const ok = (n) => () => bootLog('loaded ' + n);
-    const fail = (n) => (e) => bootLog('FAIL ' + n + ' ' + (e && (e.message || e.type) || e));
-    sentencesKOR = loadStrings(`${SENTENCES_FILE_KOR}?${millis()}`, ok('KOR txt'), fail('KOR txt'));
-    sentencesENG = loadStrings(`${SENTENCES_FILE_ENG}?${millis()}`, ok('ENG txt'), fail('ENG txt'));
+    // 텍스트·폰트는 여기서 불러오지 않는다: p5 preload는 파일 하나만 실패해도 setup으로 넘어가지 않아
+    // 화면이 영원히 검게 남는다. 대신 setup에서 loadAssets()가 재시도하며 불러온다.
+}
 
-    koreanFont = loadFont(FONT_KO, ok('font KO'), fail('font KO'));
-    englishFont = loadFont(FONT_EN, ok('font EN'), fail('font EN'));
-    englishFont2 = loadFont(FONT_EN_THIN, ok('font EN thin'), fail('font EN thin'));
+// 텍스트·폰트 불러오기 (실패하면 점점 늦춰 가며 무한 재시도, 다 되면 assetsReady = true)
+function loadAssets() {
+    const retry = (name, fn) => new Promise((resolve) => {
+        let n = 0;
+        const attempt = () => {
+            n++;
+            fn().then((v) => { bootLog('loaded ' + name + (n > 1 ? ' (try ' + n + ')' : '')); resolve(v); })
+                .catch((e) => {
+                    bootLog('FAIL ' + name + ' try ' + n + ': ' + (e && (e.message || e.type) || e));
+                    setTimeout(attempt, Math.min(5000, 700 * n));
+                });
+        };
+        attempt();
+    });
+    const text = (file) => retry(file, () =>
+        fetch(`${file}?${Date.now()}`, { cache: 'no-store' }).then((r) => {   // 캐시 회피
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+        }));
+    const font = (path) => retry(path.split('/').pop(), () => new Promise((res, rej) => loadFont(path, res, rej)));
+    // '/' 기준으로 chunk 분리 (chunk 원본 보존 - 빈 줄까지 라인 카운트용)
+    const chunks = (t) => t.split(/\r?\n/).join('\n').split('/').filter(s => s.trim().length > 0);
+
+    return Promise.all([
+        text(SENTENCES_FILE_KOR), text(SENTENCES_FILE_ENG),
+        font(FONT_KO), font(FONT_EN), font(FONT_EN_THIN),
+    ]).then(([kor, eng, fKo, fEn, fEnThin]) => {
+        sentencesKOR = chunks(kor);
+        sentencesENG = chunks(eng);
+        sentences = lang === 'ENG' ? sentencesENG : sentencesKOR;
+        koreanFont = fKo; englishFont = fEn; englishFont2 = fEnThin;
+        assetsReady = true;
+        bootLog('assets ready');
+    });
 }
 
 function setup() {
     bootLog('setup start');
+    loadAssets();
     getAudioContext().addEventListener('statechange', () => bootLog('ctx ' + getAudioContext().state));
 
     // iOS: 소리 허용(사용자 활성화)은 touchstart가 아니라 touchend/click 에서만 인정된다.
@@ -151,9 +182,6 @@ function setup() {
     };
     document.addEventListener('touchend', unlockAudio, true);
     document.addEventListener('click', unlockAudio, true);
-    // KOR/ENG: '/' 기준으로 chunk 분리 (chunk 원본 보존 - 빈 줄까지 라인 카운트용)
-    sentencesKOR = sentencesKOR.join('\n').split('/').filter(s => s.trim().length > 0);
-    sentencesENG = sentencesENG.join('\n').split('/').filter(s => s.trim().length > 0);
 
     // 비율 유지 크기 계산 (+ 자막 자리 확보)
     const lay = computeCanvasLayout();
@@ -445,6 +473,7 @@ function resetMessageStateOnly() {
 }
 
 function mousePressed() {
+    if (!assetsReady) return;   // 메뉴가 아직 안 그려졌으면 무시
     // 시작 전: 언어 선택 UI 클릭 처리 (선택 즉시 시작)
     if (!started) {
         // 오디오 컨텍스트는 사용자 제스처에서만 resume 가능
@@ -603,6 +632,7 @@ function updateDebug() {
 function draw() {
     if (frameCount === 1) bootLog('first draw');
     updateDebug();
+    if (!assetsReady) { background(BG_COLOR); return; }   // 텍스트·폰트 준비 전에는 검은 화면
     // 풀스크린일 때 커서 숨김, 아니면 표시
     if (fullscreen()) noCursor();
     else cursor(ARROW);
