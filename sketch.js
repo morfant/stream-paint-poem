@@ -125,6 +125,7 @@ let ui = {
 };
 
 function preload() {
+    bootLog('preload');
     // 캐시 회피 쿼리 부착
     sentencesKOR = loadStrings(`${SENTENCES_FILE_KOR}?${millis()}`);
     sentencesENG = loadStrings(`${SENTENCES_FILE_ENG}?${millis()}`);
@@ -135,6 +136,7 @@ function preload() {
 }
 
 function setup() {
+    bootLog('setup start');
     // KOR/ENG: '/' 기준으로 chunk 분리 (chunk 원본 보존 - 빈 줄까지 라인 카운트용)
     sentencesKOR = sentencesKOR.join('\n').split('/').filter(s => s.trim().length > 0);
     sentencesENG = sentencesENG.join('\n').split('/').filter(s => s.trim().length > 0);
@@ -185,12 +187,14 @@ function setup() {
         // WebKit(Safari, iOS 모든 브라우저)은 <audio> 스트림 분석값이 0 → 직접 디코딩 경로 사용
         if (shouldUseStreamDecoder()) {
             audioReady = StreamDecoder.isSupported().then(async (ok) => {
+                bootLog('decoder supported: ' + ok);
                 if (!ok) { setupMediaElementAudio(context); return; } // 구형 브라우저: 기존 방식
                 streamDecoder = new StreamDecoder(context, AUDIO_URL);
                 await streamDecoder.init();
+                bootLog('decoder ready');
                 streamDecoder.output.connect(gainOut);
                 streamDecoder.output.connect(gainFFT);
-            }).catch(() => { if (!streamDecoder && !audio) setupMediaElementAudio(context); });
+            }).catch((e) => { bootLog('decoder init fail: ' + e); if (!streamDecoder && !audio) setupMediaElementAudio(context); });
         } else {
             setupMediaElementAudio(context);
             audioReady = Promise.resolve();
@@ -247,6 +251,7 @@ function setup() {
     portraitHintEl.style('pointer-events', 'none');
     portraitHintEl.style('z-index', '10');
     updateStartDomLayout();
+    bootLog('setup done');
 }
 
 // 기존 방식: <audio> 요소 → MediaElementSource (데스크톱 Chrome/Firefox)
@@ -463,6 +468,7 @@ function touchStarted() {
 }
 
 function startAudio() {
+    bootLog('startAudio');
     background(BG_COLOR);
     if (!USE_MIC_INPUT) {
         // iOS: Web Audio도 무음 스위치와 상관없이 재생되도록 (Safari 16.4+)
@@ -564,6 +570,7 @@ function updateDebug() {
 }
 
 function draw() {
+    if (frameCount === 1) bootLog('first draw');
     updateDebug();
     // 풀스크린일 때 커서 숨김, 아니면 표시
     if (fullscreen()) noCursor();

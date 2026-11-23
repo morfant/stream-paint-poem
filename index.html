@@ -11,6 +11,26 @@
     <meta name="theme-color" content="#000000" />
     <link rel="manifest" href="manifest.json" />
     <title>some-bodies are listening, too</title>
+    <script>
+      // ?debug: 페이지가 열리자마자 단계·오류를 화면에 표시 (p5가 그리기 전에 멈춰도 보이도록)
+      (function () {
+        if (!/[?&]debug\b/.test(location.search)) { window.bootLog = function () {}; return; }
+        var lines = [];
+        function show() {
+          var el = document.getElementById('bootlog');
+          if (!el) {
+            el = document.createElement('pre'); el.id = 'bootlog';
+            el.style.cssText = 'position:fixed;left:4px;bottom:4px;margin:0;color:#ff0;font-size:10px;z-index:100;pointer-events:none;background:rgba(0,0,0,.6);white-space:pre-wrap;max-width:95vw';
+            (document.body || document.documentElement).appendChild(el);
+          }
+          el.textContent = lines.slice(-12).join('\n');
+        }
+        window.bootLog = function (m) { lines.push(((performance.now() / 1000).toFixed(1)) + 's ' + m); show(); };
+        window.addEventListener('error', function (e) { bootLog('ERR ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); });
+        window.addEventListener('unhandledrejection', function (e) { bootLog('REJ ' + e.reason); });
+        bootLog('boot ' + navigator.userAgent.replace(/^Mozilla\/5.0 /, '').slice(0, 90));
+      })();
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
     <script src="stream-decoder.js"></script>
