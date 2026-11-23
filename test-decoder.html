@@ -1,0 +1,22 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>decoder test</title>
+<script src="stream-decoder.js"></script></head><body>
+<button id="b" style="font-size:40px">start</button><pre id="o"></pre>
+<script>
+// StreamDecoder 시험 페이지. 기본은 무음(분석만), ?loud 를 붙이면 소리도 낸다.
+window.T = {};
+document.getElementById('b').onclick = async () => {
+  const ctx = new AudioContext(); await ctx.resume();
+  T.ctx = ctx; T.supported = await StreamDecoder.isSupported();
+  const sd = new StreamDecoder(ctx, 'https://locus.creacast.com:9443/jeju_georo.mp3');
+  await sd.init(); T.sd = sd;
+  const an = ctx.createAnalyser(); an.fftSize = 2048; T.an = an;
+  const g = ctx.createGain(); g.gain.value = new URLSearchParams(location.search).has('loud') ? 1 : 0;
+  sd.output.connect(an); sd.output.connect(g); g.connect(ctx.destination);
+  sd.start();
+  setInterval(() => {
+    const f = new Uint8Array(an.frequencyBinCount); an.getByteFrequencyData(f);
+    T.specMax = Math.max(...f);
+    document.getElementById('o').textContent = JSON.stringify({rate: ctx.sampleRate, spec: T.specMax, ...sd.status}, null, 1);
+  }, 250);
+};
+</script></body></html>

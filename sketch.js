@@ -45,6 +45,11 @@ let SUBTITLE_COLOR = 'rgba(255, 255, 255, 0.5)'; // 자막 색 (예: 'white', 'r
 let SUBTITLE_BASE_FONT_PX = 25;       // 디자인 기준 너비(1280)에서의 자막 폰트 크기(px)
 let SUBTITLE_KOR_MUL = 0.9;           // 한글 자막 크기 배율
 let SUBTITLE_ENG_MUL = 1.0;           // 영어 자막 크기 배율
+let SUBTITLE_MIN_FONT_PX = 12;        // 작은 화면(모바일)에서 자막 최소 크기(px)
+
+// ■ 작은 화면 대응
+let DESIGN_W = 1280;                  // 캔버스가 이보다 좁으면 이 폭 기준으로 그린 뒤 축소 (넓으면 그대로)
+let START_DESIGN_W = 820, START_DESIGN_H = 560; // 시작 화면이 잘리지 않는 최소 크기(이보다 작으면 축소)
 
 // ■ 폰트/텍스트 리소스
 let MSG_SIZE = 31;
@@ -59,7 +64,9 @@ let FONT_EN_THIN = "fonts/NotoSansKR-Thin.otf";
  * 내부 상태/런타임 변수 (수정 비권장)
  **********************/
 
-let audio, mic, fft, source, gainOut;
+let audio, mic, fft, source, gainOut, gainFFT;
+let streamDecoder = null;   // WebKit용 직접 디코딩 경로 (stream-decoder.js)
+let audioReady = Promise.resolve();
 let spectrum = [];
 let cnt = 0;
 let points = [];
@@ -98,11 +105,15 @@ let subtitleEl;
 let subtitleTimeout = null;
 let baseDevicePixelRatio = 1; // 브라우저 줌 감지용 기준값
 
+// 작은 화면 축소 배율: 시각화는 S(가상 크기 VW×VH), 시작 화면은 SS
+let S = 1, VW = 0, VH = 0, SS = 1;
+
 let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 'thunder'
 let weatherTempC = null;
 
 let emailLinkEl;
 let copyrightEl;
+let portraitHintEl;
 
 
 let ui = {
@@ -142,7 +153,7 @@ function setup() {
     noStroke();
     frameRate(FPS);
 
-    visualizeMul = width * VISUALIZE_INTENSITY_MUL;
+    updateScale();
     fft = new p5.FFT(FFT_SMOOTHING, FFT_BANDS);
 
     theBlue = color(...DOT_COLOR);
@@ -161,51 +172,29 @@ function setup() {
             fft.setInput(micGain);
         });
     } else {
-        // 라이브 스트림: 캐시된 청크를 loop하는 문제 방지 (cache-busting + loop OFF + 끊기면 재연결)
-        audio = new Audio(`${AUDIO_URL}?t=${Date.now()}`);
-        audio.crossOrigin = "anonymous";
-        audio.loop = false;
-        audio.preload = "none";
-        document.body.appendChild(audio);
-
-        // 재연결 throttle: 폭주 방지 + 실패 시 점진적 backoff
-        const RECONNECT_BASE_MS = 1500;
-        const RECONNECT_MAX_MS = 15000;
-        let reconnectDelay = RECONNECT_BASE_MS;
-        let reconnectTimer = null;
-
-        const scheduleReconnect = () => {
-            if (reconnectTimer) return; // 이미 예약돼 있으면 무시
-            reconnectTimer = setTimeout(() => {
-                reconnectTimer = null;
-                audio.src = `${AUDIO_URL}?t=${Date.now()}`;
-                audio.play()
-                    .then(() => { reconnectDelay = RECONNECT_BASE_MS; }) // 성공 시 지연 리셋
-                    .catch(() => {
-                        reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
-                        scheduleReconnect();
-                    });
-            }, reconnectDelay);
-        };
-
-        audio.addEventListener('ended', scheduleReconnect);
-        audio.addEventListener('stalled', scheduleReconnect);
-        audio.addEventListener('error', scheduleReconnect);
-        // 정상 재생 시작 시 backoff 리셋
-        audio.addEventListener('playing', () => { reconnectDelay = RECONNECT_BASE_MS; });
-
+        // 출력/분석 공용 노드: [소스] → gainOut → 스피커, [소스] → gainFFT → FFT
         let context = getAudioContext();
-        source = context.createMediaElementSource(audio);
-
         gainOut = context.createGain();
         gainOut.gain.value = OUTPUT_START_GAIN;
-        source.connect(gainOut);
         gainOut.connect(context.destination);
 
-        let gainFFT = context.createGain();
+        gainFFT = context.createGain();
         gainFFT.gain.value = FFT_TAP_GAIN;
-        source.connect(gainFFT);
         fft.setInput(gainFFT);
+
+        // WebKit(Safari, iOS 모든 브라우저)은 <audio> 스트림 분석값이 0 → 직접 디코딩 경로 사용
+        if (shouldUseStreamDecoder()) {
+            audioReady = StreamDecoder.isSupported().then(async (ok) => {
+                if (!ok) { setupMediaElementAudio(context); return; } // 구형 브라우저: 기존 방식
+                streamDecoder = new StreamDecoder(context, AUDIO_URL);
+                await streamDecoder.init();
+                streamDecoder.output.connect(gainOut);
+                streamDecoder.output.connect(gainFFT);
+            }).catch(() => { if (!streamDecoder && !audio) setupMediaElementAudio(context); });
+        } else {
+            setupMediaElementAudio(context);
+            audioReady = Promise.resolve();
+        }
     }
 
     sentences = sentencesKOR;
@@ -245,6 +234,69 @@ function setup() {
     copyrightEl.style('font-size', '16px');
     copyrightEl.style('pointer-events', 'none');
     copyrightEl.style('z-index', '10');
+
+    portraitHintEl = createElement('div', 'Rotate your phone for a larger view · 가로로 돌리면 크게 볼 수 있어요');
+    portraitHintEl.style('position', 'fixed');
+    portraitHintEl.style('left', '0');
+    portraitHintEl.style('width', '100%');
+    portraitHintEl.style('top', '24px');
+    portraitHintEl.style('text-align', 'center');
+    portraitHintEl.style('color', 'rgba(255,255,255,0.7)');
+    portraitHintEl.style('font-family', "'NotoSansKR-Thin', 'Times New Roman', serif");
+    portraitHintEl.style('font-size', '13px');
+    portraitHintEl.style('pointer-events', 'none');
+    portraitHintEl.style('z-index', '10');
+    updateStartDomLayout();
+}
+
+// 기존 방식: <audio> 요소 → MediaElementSource (데스크톱 Chrome/Firefox)
+function setupMediaElementAudio(context) {
+    // 라이브 스트림: 캐시된 청크를 loop하는 문제 방지 (cache-busting + loop OFF + 끊기면 재연결)
+    audio = new Audio(`${AUDIO_URL}?t=${Date.now()}`);
+    audio.crossOrigin = "anonymous";
+    audio.loop = false;
+    audio.preload = "none";
+    document.body.appendChild(audio);
+
+    // 재연결 throttle: 폭주 방지 + 실패 시 점진적 backoff
+    const RECONNECT_BASE_MS = 1500;
+    const RECONNECT_MAX_MS = 15000;
+    let reconnectDelay = RECONNECT_BASE_MS;
+    let reconnectTimer = null;
+
+    const scheduleReconnect = () => {
+        if (reconnectTimer) return; // 이미 예약돼 있으면 무시
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            audio.src = `${AUDIO_URL}?t=${Date.now()}`;
+            audio.play()
+                .then(() => { reconnectDelay = RECONNECT_BASE_MS; }) // 성공 시 지연 리셋
+                .catch(() => {
+                    reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
+                    scheduleReconnect();
+                });
+        }, reconnectDelay);
+    };
+
+    audio.addEventListener('ended', scheduleReconnect);
+    audio.addEventListener('stalled', scheduleReconnect);
+    audio.addEventListener('error', scheduleReconnect);
+    // 정상 재생 시작 시 backoff 리셋
+    audio.addEventListener('playing', () => { reconnectDelay = RECONNECT_BASE_MS; });
+
+    source = context.createMediaElementSource(audio);
+    source.connect(gainOut);
+    source.connect(gainFFT);
+}
+
+// 직접 디코딩 경로를 쓸지: ?decoder=1 / ?decoder=0 으로 강제 가능, 기본은 WebKit 엔진일 때
+function shouldUseStreamDecoder() {
+    const q = new URLSearchParams(location.search).get('decoder');
+    if (q === '1') return true;
+    if (q === '0') return false;
+    const ua = navigator.userAgent;
+    const isWebKit = /AppleWebKit/.test(ua) && !/Chrome\/|Chromium|Edg\//.test(ua);
+    return isWebKit && typeof StreamDecoder !== 'undefined';
 }
 
 function toggleFullscreen() {
@@ -269,9 +321,45 @@ function windowResized() {
     background(BG_COLOR);
 
     // 가로폭 바뀌면 스케일 다시 계산
-    visualizeMul = width * VISUALIZE_INTENSITY_MUL;
+    updateScale();
+    updateStartDomLayout();
     updateSubtitleFontSize();
     updateSubtitlePosition();
+}
+
+// 캔버스 크기에 따라 축소 배율 갱신 (데스크톱처럼 넓으면 S=1 → 기존과 동일)
+function updateScale() {
+    S = Math.min(1, width / DESIGN_W);
+    VW = width / S;
+    VH = height / S;
+    visualizeMul = VW * VISUALIZE_INTENSITY_MUL;
+    SS = Math.min(1, width / START_DESIGN_W, height / START_DESIGN_H);
+}
+
+// 시작 화면의 HTML 요소(이메일·저작권)도 시작 화면 배율에 맞춤
+function updateStartDomLayout() {
+    if (emailLinkEl) {
+        emailLinkEl.style('top', `calc(50% + ${290 * SS}px)`);
+        emailLinkEl.style('font-size', Math.max(11, 18 * SS) + 'px');
+    }
+    if (copyrightEl) {
+        copyrightEl.style('left', Math.max(8, 20 * SS) + 'px');
+        copyrightEl.style('bottom', Math.max(8, 20 * SS) + 'px');
+        copyrightEl.style('font-size', Math.max(10, 16 * SS) + 'px');
+    }
+    updatePortraitHint();
+}
+
+// 세로 화면(폰)일 때 가로로 돌려 보라는 안내 (막지는 않음)
+function updatePortraitHint() {
+    if (!portraitHintEl) return;
+    const isPortraitTouch = windowHeight > windowWidth && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    portraitHintEl.style('display', isPortraitTouch && !started ? 'block' : 'none');
+}
+
+// 화면 좌표 → 시작 화면 그리기 좌표 (중심 기준 SS 축소 역변환)
+function toStartCoords(mx, my) {
+    return { x: (mx - width / 2) / SS + width / 2, y: (my - height / 2) / SS + height / 2 };
 }
 
 function updateSubtitlePosition() {
@@ -292,7 +380,7 @@ function updateSubtitleFontSize() {
     // 자막 언어에 따라 한/영 배율 따로 적용
     const langMul = /[ㄱ-ㆎ가-힣]/.test(subtitleMessage) ? SUBTITLE_KOR_MUL : SUBTITLE_ENG_MUL;
     const px = SUBTITLE_BASE_FONT_PX * width / 1280 * zoomFactor * langMul;
-    subtitleEl.style('font-size', px + 'px');
+    subtitleEl.style('font-size', Math.max(SUBTITLE_MIN_FONT_PX, px) + 'px');
 }
 
 // function mousePressed() {
@@ -325,7 +413,8 @@ function mousePressed() {
         }
 
         // ENG
-        if (hit(mouseX, mouseY, ui.eng)) {
+        const sp = toStartCoords(mouseX, mouseY);
+        if (hit(sp.x, sp.y, ui.eng)) {
             lang = "ENG";
             sentences = sentencesENG;
             resetMessageStateOnly();
@@ -334,7 +423,7 @@ function mousePressed() {
         }
 
         // KOR
-        if (hit(mouseX, mouseY, ui.kor)) {
+        if (hit(sp.x, sp.y, ui.kor)) {
             lang = "KOR";
             sentences = sentencesKOR;
             resetMessageStateOnly();
@@ -356,7 +445,14 @@ function touchStarted() {
 function startAudio() {
     background(BG_COLOR);
     if (!USE_MIC_INPUT) {
-        audio.play();
+        // iOS: Web Audio도 무음 스위치와 상관없이 재생되도록 (Safari 16.4+)
+        if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch (e) {} }
+        getAudioContext().resume();
+        if (audio) audio.play();               // 기존 방식은 제스처 안에서 바로 재생
+        audioReady.then(() => {
+            if (streamDecoder) streamDecoder.start();
+            else if (audio && audio.paused) audio.play();
+        });
         fadeInAudio(START_FADE_IN_MS);
     }
     started = true;
@@ -364,7 +460,9 @@ function startAudio() {
     cycleStartMillis = millis(); // 사이클 타이머 시작
     if (emailLinkEl) emailLinkEl.style('display', 'none');
     if (copyrightEl) copyrightEl.style('display', 'none');
-    fullscreen(true);
+    if (portraitHintEl) portraitHintEl.style('display', 'none');
+    // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
+    if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) fullscreen(true);
 }
 
 function fadeInAudio(durationMillis = 3000) {
@@ -429,13 +527,17 @@ function draw() {
     spectrum = fft.analyze();
 
     if (VISUALIZE_MODE === 0) {
+        // 작은 화면: DESIGN_W 기준 가상 좌표(VW×VH)로 그린 뒤 S 만큼 축소
+        push();
+        scale(S);
         drawMainVisualization();
         updateGraphPoints(GRAPH_POINT_UPDATE_INTERVAL);
         drawGraphPoints();
         drawCurrentMessage();
+        pop();
 
         // 스캔이 왼쪽 끝까지 도달했을 때 처리
-        if (cnt >= width) {
+        if (cnt >= VW) {
             if (allMessagesShown) {
                 if (!coolingDown) {
                     // 마지막 문장까지 끝난 첫 경계: 텍스트 없이 한 바퀴 더 흘려보냄
@@ -466,6 +568,10 @@ function draw() {
 
 function drawStartScreen() {
     background(BG_COLOR);
+    // 작은 화면: 중심 기준으로 SS 만큼 축소 (넓은 화면은 SS=1 → 기존과 동일)
+    push();
+    translate(width / 2 * (1 - SS), height / 2 * (1 - SS));
+    scale(SS);
     fill(255);
     textAlign(CENTER, CENTER);
     strokeWeight(0.1);
@@ -540,8 +646,9 @@ function drawStartScreen() {
 
     // 커서 처리(풀스크린 아닐 때만)
     if (!fullscreen()) {
-        let overEng = hit(mouseX, mouseY, ui.eng);
-        let overKor = hit(mouseX, mouseY, ui.kor);
+        const sp = toStartCoords(mouseX, mouseY);
+        let overEng = hit(sp.x, sp.y, ui.eng);
+        let overKor = hit(sp.x, sp.y, ui.kor);
         if (overEng || overKor) cursor(HAND);
         else cursor(ARROW);
     }
@@ -551,6 +658,7 @@ function drawStartScreen() {
     textSize(18);
     text("* This site works only on desktop versions of Firefox and Chrome", width / 2, height / 2 + 230);
     text("** For the intended layout and subtitle scale, please view at default browser zoom (100%)", width / 2, height / 2 + 260);
+    pop();
 }
 
 
@@ -615,8 +723,8 @@ function drawMainVisualization() {
     for (let i = 0; i < FFT_BANDS; i++) {
         noStroke();
         fill(theBlue);
-        let y = height - i;
-        let x = constrain(width - cnt, 0, width);
+        let y = VH - i;
+        let x = constrain(VW - cnt, 0, VW);
         let valMapped = spectrum[i] * visualizeMul * i * random(2);
         ellipse(x, y, valMapped * 0.000001, valMapped * 0.000001);
     }
@@ -635,8 +743,8 @@ function updateGraphPoints(interval = 1) {
     let waveform = fft.waveform();
     let sample = waveform.reduce((max, val) => (val > max ? val : max), -Infinity);
 
-    let gx = frameCount % (width + 1) + random(-1, 1);
-    let gy = map(abs(sample), 0, 1, 0, height);
+    let gx = frameCount % (VW + 1) + random(-1, 1);
+    let gy = map(abs(sample), 0, 1, 0, VH);
     graphPoints.push({ x: gx, y: gy });
 
     if (graphPoints.length > 2) graphPoints.shift();
@@ -659,7 +767,7 @@ function drawCurrentMessage() {
         // 단, 마지막으로 표시한 문장의 잔상(표시 시간)은 그대로 렌더
         if (frameCount - lastMessageFrame < MESSAGE_PRINT_FRAMES) {
             push();
-            translate(lastMessageX, height - 22);
+            translate(lastMessageX, VH - 22);
             rotate(-HALF_PI + jitterAngle);
             textFont(/[ㄱ-ㆎ|가-힣]/.test(currentMessage) ? koreanFont : englishFont);
             const a = constrain((frameCount - lastMessageFrame) / MESSAGE_PRINT_FRAMES * 255, 0, 255);
@@ -681,7 +789,7 @@ function drawCurrentMessage() {
             currentMessage = sentences[sentenceIndex];
             syncSubtitleToCurrentMessage();
             lastMessageFrame = frameCount;
-            lastMessageX = width - cnt;
+            lastMessageX = VW - cnt;
             sentenceIndex = (sentenceIndex + 1) % sentences.length;
             jitterAngle = radians(random(-3, 3));
 
@@ -695,7 +803,7 @@ function drawCurrentMessage() {
             currentMessage = sentences[sentenceIndex];
             syncSubtitleToCurrentMessage();
             lastMessageFrame = frameCount;
-            lastMessageX = width - cnt;
+            lastMessageX = VW - cnt;
             sentenceIndex = (sentenceIndex + 1) % sentences.length;
             jitterAngle = radians(random(-3, 3));
 
@@ -706,7 +814,7 @@ function drawCurrentMessage() {
 
     if (frameCount - lastMessageFrame < MESSAGE_PRINT_FRAMES) {
         push();
-        translate(lastMessageX, height - 22);
+        translate(lastMessageX, VH - 22);
         rotate(-HALF_PI + jitterAngle);
         textFont(/[ㄱ-ㆎ|가-힣]/.test(currentMessage) ? koreanFont : englishFont);
         const a = constrain((frameCount - lastMessageFrame) / MESSAGE_PRINT_FRAMES * 255, 0, 255);
