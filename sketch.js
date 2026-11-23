@@ -382,6 +382,15 @@ function computeCanvasLayout() {
 
 function windowResized() {
     bootLog('resize ' + windowWidth + 'x' + windowHeight);
+    // 작품이 돌고 있으면 크기를 바꾸기 전에 지금까지의 그림을 복사해 둔다 (전체화면 전환·회전 때 흔적 유지)
+    let snap = null;
+    const oldVW = VW;
+    if (started) {
+        snap = document.createElement('canvas');
+        snap.width = canvas.elt.width; snap.height = canvas.elt.height;
+        snap.getContext('2d').drawImage(canvas.elt, 0, 0);
+    }
+
     const lay = computeCanvasLayout();
     resizeCanvas(lay.w, lay.h);
     canvas.position(lay.x, lay.y);
@@ -390,6 +399,20 @@ function windowResized() {
 
     // 가로폭 바뀌면 스케일 다시 계산
     updateScale();
+
+    if (snap) {
+        // 복사해 둔 그림을 새 크기에 맞춰 다시 깔기 (비율은 항상 같아 찌그러지지 않음)
+        const ctx = drawingContext;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(snap, 0, 0, snap.width, snap.height, 0, 0, canvas.elt.width, canvas.elt.height);
+        ctx.restore();
+        // 훑는 위치·마지막 문장 위치도 같은 비율로 옮겨 그 자리에서 이어 그림
+        const k = oldVW > 0 ? VW / oldVW : 1;
+        cnt = Math.round(cnt * k);
+        if (lastMessageX !== null) lastMessageX *= k;
+    }
     updateStartDomLayout();
     updateSubtitleFontSize();
     updateSubtitlePosition();
