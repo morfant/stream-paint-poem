@@ -35,7 +35,16 @@ Single-file sketch (`sketch.js`) using the p5.js library. All logic lives in sta
 Two source paths, chosen by `shouldUseStreamDecoder()`:
 - **WebKit (Safari, every browser on iOS) → `StreamDecoder`** (`stream-decoder.js`). WebKit plays a live `<audio>` stream through `MediaElementSource` but the analyser gets only zeros (no visuals). So the stream is `fetch()`ed, split into MP3 frames, decoded with WebCodecs `AudioDecoder`, and played from an AudioWorklet ring buffer (resamples 44.1k→context rate, ~1.5s start buffer, own reconnect/stall logic). Falls back to the `<audio>` path if `AudioDecoder`/mp3 is unsupported. **Needs a secure context** (HTTPS or localhost) — on LAN `http://` it silently falls back and visuals stay black.
 - **Desktop Chrome/Firefox → `<audio>` + `MediaElementSource`** (`setupMediaElementAudio()`, original path).
-- Override with `?decoder=1` / `?decoder=0`. `test-decoder.html` is a bare test page (muted unless `?loud`).
+- Override with `?decoder=1` / `?decoder=0`.
+- The decoder only starts once the AudioContext is `running` (`startDecoderWhenRunning()`), and drops decoded audio while it is suspended — otherwise PCM piles up in the worklet port (~21MB/min) and iOS kills the tab.
+
+**iOS audio unlock:** iOS only accepts `touchend`/`click` as a user gesture for audio — not `touchstart`. The start screen still advances in `touchStarted()` (which returns false → no synthesized click), so `setup()` adds document-level `touchend`/`click` listeners (`unlockAudio`) that `resume()` the context; they stay active to recover from interruptions. `navigator.audioSession.type = 'playback'` (plays with the silent switch on) is set in an inline script in `index.html` **before** p5.sound creates the AudioContext.
+
+**Asset loading:** texts and fonts are loaded in `loadAssets()` (called from `setup()`), not in `preload()` — a single failed load in p5's `preload` blocks `setup` forever (black screen). `loadAssets()` retries indefinitely (backoff up to 5s); until `assetsReady`, `draw()` shows black and taps are ignored.
+
+**`?debug`:** green overlay (audio path, context state, FFT max, decoder buffer) + yellow boot log (`bootLog()`, persisted in `sessionStorage` so it survives iOS auto-reloads). Harmless for normal visitors (only with the query param). iPhone testing needs HTTPS → use commit-pinned `https://rawcdn.githack.com/morfant/stream-paint-poem/<sha>/index.html?debug` (the branch URL on raw.githack mixes cached file versions).
+
+**Home-screen web app:** `apple-mobile-web-app-capable` meta + `manifest.json` (`display: fullscreen`) → launched from the home screen it runs without browser chrome (confirmed on iPhone). In a normal iPhone Safari tab element fullscreen is unsupported, so `fullscreen(true)` is skipped there.
 
 **Small screens:** if canvas width < `DESIGN_W` (1280), the visualization is drawn in virtual 1280×512 coords (`VW`/`VH`) and scaled by `S`; the start screen is scaled around its center by `SS` (mouse hits go through `toStartCoords()`). Wide desktop screens get `S = 1`, i.e. unchanged. Use `VW`/`VH`, not `width`/`height`, inside visualization drawing code. `?nofs` skips the fullscreen request (also skipped where unsupported, e.g. iPhone).
 

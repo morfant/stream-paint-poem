@@ -776,7 +776,7 @@ function drawStartScreen() {
     strokeWeight(0.3);
     fill(255);
     textSize(18);
-    text("* This site works only on desktop versions of Firefox and Chrome", width / 2, height / 2 + 230);
+    text("* Works on desktop and mobile browsers. On a phone, landscape view is recommended", width / 2, height / 2 + 230);
     text("** For the intended layout and subtitle scale, please view at default browser zoom (100%)", width / 2, height / 2 + 260);
     pop();
 }
