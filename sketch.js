@@ -735,15 +735,15 @@ function drawStartScreen() {
 
     // 배치 항목 만들기
     const items = [];
-    const line = (str, font, size, opts = {}) => items.push({ type: 'text', str, font, size, ...opts });
+    const addLine = (str, font, size, opts = {}) => items.push({ type: 'text', str, font, size, ...opts });
     const gap = (g) => items.push({ type: 'gap', g });
     const enT = "Some-bodies are listening, too", koT = "누군가 듣고 있어";
     const dateT = getFormattedKoreanTime() + weatherSuffix;
-    line(enT, englishFont, fitSize(enT, englishFont, sz(B.title, 22)));
+    addLine(enT, englishFont, fitSize(enT, englishFont, sz(B.title, 22)));
     gap(B.gapTitle);
-    line(koT, koreanFont, fitSize(koT, koreanFont, sz(B.titleKo, 20)));
+    addLine(koT, koreanFont, fitSize(koT, koreanFont, sz(B.titleKo, 20)));
     gap(B.gapAfterTitles);
-    line(dateT, englishFont2, fitSize(dateT, englishFont2, sz(B.date, 14)));
+    addLine(dateT, englishFont2, fitSize(dateT, englishFont2, sz(B.date, 14)));
     gap(B.gapBeforeButtons);
     const btnH = Math.max(42, B.btnH * k), btnW = Math.max(104, B.btnW * k), btnGap = Math.max(14, 18 * k);
     items.push({ type: 'buttons', h: btnH });
@@ -752,16 +752,13 @@ function drawStartScreen() {
     items.push({ type: 'notice', h: noticeH });
     items.push({ type: 'gap', g: B.gapAfterNotice, note: true });
     const notes = [
-        ["Works on desktop and mobile browsers. On a phone, landscape view is recommended", B.note, 12],
-        ["데스크톱과 모바일 브라우저에서 볼 수 있습니다. 휴대폰은 가로 화면을 권장합니다.", B.noteKo, 11.5],
-        null,
         ["For the intended layout and subtitle scale, please view at default browser zoom (100%)", B.note, 12],
         ["의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", B.noteKo, 11.5],
     ];
     for (const n of notes) {
         if (!n) { items.push({ type: 'gap', g: B.gapNotes, note: true }); continue; }
         const size = sz(n[1], n[2]);
-        for (const l of wrap(n[0], englishFont2, size)) line(l, englishFont2, size, { note: true });
+        for (const l of wrap(n[0], englishFont2, size)) addLine(l, englishFont2, size, { note: true });
     }
 
     // 높이 계산: 글씨 높이는 고정, 넘치면 간격부터 줄임
@@ -784,12 +781,16 @@ function drawStartScreen() {
         if (it.type === 'gap') { y += it.g * gk; continue; }
         if (it.type === 'notice') {
             textFont(englishFont2); textSize(noticeText);
-            const label = showNotice ? 'Notice  –' : 'Notice  +';   // 폰트에 있는 글자만 (▴▾는 없어서 네모로 보임)
-            const nw = textWidth(label) + noticeH;
+            const label = 'Notice';
+            const tw = textWidth(label), nw = tw + noticeH;
             ui.notice = { x: W / 2 - nw / 2, y, w: nw, h: noticeH };
-            // 테두리 없이 글자만 (누를 수 있는 영역은 글자 주변 여유 포함)
+            // 테두리 없이 글자 + 밑줄만 (누를 수 있는 영역은 글자 주변 여유 포함)
+            const ty = y + noticeH / 2 - noticeText * 0.12;
             noStroke(); fill(255, 200);
-            text(label, W / 2, y + noticeH / 2 - noticeText * 0.12);
+            text(label, W / 2, ty);
+            stroke(255, 200); strokeWeight(1);
+            line(W / 2 - tw / 2, ty + noticeText * 0.62, W / 2 + tw / 2, ty + noticeText * 0.62);
+            noStroke();
             y += noticeH;
             continue;
         }
@@ -817,14 +818,19 @@ function drawStartScreen() {
         y += btnH;
     }
 
-    // 이메일(HTML 링크)을 안내 문장 바로 아래에, 저작권은 왼쪽 아래
+    // 이메일(HTML 링크)은 Notice 안: 펼쳤을 때만 안내 문장 바로 아래에 보임. 저작권은 왼쪽 아래
     const emailPx = Math.max(14, B.email * k);
-    const emailTop = Math.round(y + Math.max(14, B.email * k) * 0.8);
-    if (emailLinkEl && emailLinkEl.elt.dataset.top !== String(emailTop) + '/' + emailPx) {
-        emailLinkEl.elt.dataset.top = String(emailTop) + '/' + emailPx;
-        emailLinkEl.style('top', emailTop + 'px');
-        emailLinkEl.style('font-size', emailPx + 'px');
+    const emailTop = Math.round(y + emailPx * 0.8);
+    if (emailLinkEl) {
+        const key = showNotice + '/' + emailTop + '/' + emailPx;
+        if (emailLinkEl.elt.dataset.top !== key) {
+            emailLinkEl.elt.dataset.top = key;
+            emailLinkEl.style('display', showNotice ? 'block' : 'none');
+            emailLinkEl.style('top', emailTop + 'px');
+            emailLinkEl.style('font-size', emailPx + 'px');
+        }
     }
+    if (showNotice) y += emailPx * 1.6;   // 이메일 줄만큼 내려서 그 아래에 저작권(낮은 화면)
     if (copyrightEl) {
         const key = copyInFlow + '/' + Math.round(y) + '/' + copyPx;
         if (copyrightEl.elt.dataset.key !== key) {
@@ -834,7 +840,7 @@ function drawStartScreen() {
                 copyrightEl.style('left', '50%');
                 copyrightEl.style('transform', 'translateX(-50%)');
                 copyrightEl.style('bottom', 'auto');
-                copyrightEl.style('top', Math.round(y + Math.max(14, B.email * k) * 1.6) + 'px');
+                copyrightEl.style('top', Math.round(y + copyPx * 0.3) + 'px');
                 copyrightEl.style('white-space', 'nowrap');
             } else {            // 왼쪽 아래 (기존)
                 const m = Math.min(20, Math.max(8, W * 0.02));
