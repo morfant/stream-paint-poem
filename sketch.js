@@ -805,7 +805,7 @@ function drawStartScreen() {
         ui.eng = { x: leftX, y, w: btnW, h: btnH };
         ui.kor = { x: leftX + btnW + btnGap, y, w: btnW, h: btnH };
         const btnText = Math.max(17, B.btnText * k);
-        for (const [r, label] of [[ui.eng, 'ENG'], [ui.kor, 'KOR']]) {
+        for (const [r, label] of [[ui.eng, 'eng'], [ui.kor, 'kor']]) {
             // 테두리 없이 글자만 (누를 수 있는 영역은 버튼 크기 그대로)
             noStroke(); fill(255);
             textFont(englishFont2); textSize(btnText);
