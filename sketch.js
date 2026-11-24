@@ -270,7 +270,7 @@ function setup() {
         '<span>© 2025 - 2026 Weather Report (Jiyeon Kim, Gangil Yi)</span>' +
         '<a href="mailto:weatherreport.live@gmail.com" aria-label="Email weatherreport.live@gmail.com" title="weatherreport.live@gmail.com"' +
         ' style="pointer-events:auto;color:inherit;display:inline-flex;align-items:center;margin-left:0.55em;padding:0.35em;margin-top:-0.35em;margin-bottom:-0.35em;vertical-align:middle">' +
-        '<svg width="1.25em" height="1.25em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">' +
+        '<svg width="1.25em" height="1.25em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" style="transform:translateY(0.12em)">' +
         '<rect x="3" y="5.5" width="18" height="13" rx="1.2"/><path d="M3.6 6.4 12 12.8l8.4-6.4"/></svg></a>');
     copyrightEl.style('display', 'flex');
     copyrightEl.style('align-items', 'center');
@@ -513,7 +513,9 @@ function mousePressed() {
     }
 }
 
-function touchStarted() {
+function touchStarted(e) {
+    // 링크(저작권 옆 편지봉투 등)를 누른 터치는 막지 않는다 — false를 돌려주면 브라우저가 링크로 처리하지 못함
+    if (e && e.target && e.target.closest && e.target.closest('a')) return true;
     mousePressed();
     return false;
 }
