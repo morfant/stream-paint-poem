@@ -122,7 +122,7 @@ let weatherTempC = null;
 let copyrightEl;
 
 
-const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
+let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
 
 let ui = {
     kor: null,
@@ -749,7 +749,9 @@ function drawStartScreen() {
     const avail = H * 0.94 - copyH;
     const gk = Math.max(0.15, Math.min(k, (avail - textH) / gapsBase));
     const total = textH + gapsBase * gk + copyH;
-    let y = Math.max(4, (H - total) / 2);
+    // 모바일(터치 기기): 아래쪽 브라우저 도구 막대 등에 가리지 않게 전체를 글자 두 줄 정도 위로
+    const mobileLift = isTouchDevice ? copyPx * 1.6 * 2 : 0;
+    let y = Math.max(4, (H - total) / 2 - mobileLift);
 
     // 그리기
     textAlign(CENTER, CENTER);
@@ -792,7 +794,7 @@ function drawStartScreen() {
     }
 
     if (copyrightEl) {
-        const key = copyInFlow + '/' + Math.round(y) + '/' + copyPx;
+        const key = copyInFlow + '/' + Math.round(y) + '/' + copyPx + '/' + mobileLift;
         if (copyrightEl.elt.dataset.key !== key) {
             copyrightEl.elt.dataset.key = key;
             copyrightEl.style('font-size', copyPx + 'px');
@@ -802,8 +804,8 @@ function drawStartScreen() {
                 copyrightEl.style('bottom', 'auto');
                 copyrightEl.style('top', Math.round(y) + 'px');
                 copyrightEl.style('white-space', 'nowrap');
-            } else {            // 아래 가운데
-                const m = Math.min(20, Math.max(8, W * 0.02));
+            } else {            // 아래 가운데 (모바일은 두 줄 정도 더 위)
+                const m = Math.min(20, Math.max(8, W * 0.02)) + mobileLift;
                 copyrightEl.style('left', '50%');
                 copyrightEl.style('transform', 'translateX(-50%)');
                 copyrightEl.style('top', 'auto');
