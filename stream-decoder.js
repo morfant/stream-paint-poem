@@ -128,7 +128,12 @@ registerProcessor('stream-decoder-processor', StreamDecoderProcessor);
                 processorOptions: { startSec: this.opts.startSec, maxSec: this.opts.maxSec, ringSec: 20 },
             });
             this.node.port.onmessage = (e) => {
-                if (e.data.type === 'status') Object.assign(this.status, e.data);
+                if (e.data.type === 'status') {
+                    const was = this.status.playing;
+                    Object.assign(this.status, e.data);
+                    // 실제로 소리가 나오기 시작한 순간 알림 (페이드인 시작 시점용)
+                    if (!was && this.status.playing && this.onplaying) this.onplaying();
+                }
             };
             this.output = this.node;
         }

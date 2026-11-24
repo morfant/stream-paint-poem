@@ -240,6 +240,7 @@ function setup() {
                 streamDecoder = new StreamDecoder(context, AUDIO_URL);
                 await streamDecoder.init();
                 bootLog('decoder ready');
+                streamDecoder.onplaying = onStreamPlaying;
                 streamDecoder.output.connect(gainOut);
                 streamDecoder.output.connect(gainFFT);
             }).catch((e) => { bootLog('decoder init fail: ' + e); if (!streamDecoder && !audio) setupMediaElementAudio(context); });
@@ -342,7 +343,7 @@ function setupMediaElementAudio(context) {
     audio.addEventListener('stalled', scheduleReconnect);
     audio.addEventListener('error', scheduleReconnect);
     // 정상 재생 시작 시 backoff 리셋
-    audio.addEventListener('playing', () => { reconnectDelay = RECONNECT_BASE_MS; });
+    audio.addEventListener('playing', () => { reconnectDelay = RECONNECT_BASE_MS; onStreamPlaying(); });
 
     source = context.createMediaElementSource(audio);
     source.connect(gainOut);
@@ -563,7 +564,13 @@ function startAudio() {
             if (streamDecoder) startDecoderWhenRunning();
             else if (audio && audio.paused) audio.play();
         });
-        fadeInAudio(START_FADE_IN_MS);
+        // 페이드인은 소리가 실제로 나오기 시작할 때(onStreamPlaying) 시작 — 스트림 연결·버퍼링에 몇 초 걸려서
+        // 누르는 순간 시작하면 소리가 나올 즈음엔 이미 볼륨이 올라가 있어 갑자기 시작되는 것처럼 들림
+        if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
+        if (gainOut) gainOut.gain.value = OUTPUT_START_GAIN;
+        fadePending = true;
+        clearTimeout(fadeFallbackTimer);
+        fadeFallbackTimer = setTimeout(onStreamPlaying, 12000);   // 신호를 못 받아도 12초 뒤엔 페이드인
     }
     started = true;
     startTime = new Date();
@@ -588,7 +595,16 @@ function startDecoderWhenRunning() {
     c.addEventListener('statechange', onState);
 }
 
-let fadeTimer = null;
+let fadeTimer = null, fadePending = false, fadeFallbackTimer = null;
+// 스트림 소리가 실제로 나오기 시작함 → (시작 직후 한 번만) 페이드인
+function onStreamPlaying() {
+    if (!started || !fadePending) return;
+    fadePending = false;
+    clearTimeout(fadeFallbackTimer);
+    bootLog('stream playing → fade in');
+    fadeInAudio(START_FADE_IN_MS);
+}
+
 function fadeInAudio(durationMillis = 3000) {
     if (!gainOut) return;
     if (fadeTimer) clearInterval(fadeTimer);
@@ -607,6 +623,7 @@ function fadeInAudio(durationMillis = 3000) {
 function returnToMenu() {
     bootLog('returnToMenu');
     started = false;
+    fadePending = false; clearTimeout(fadeFallbackTimer);
     if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
     if (gainOut) gainOut.gain.value = 0;
     if (streamDecoder) streamDecoder.stop();
