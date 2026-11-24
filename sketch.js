@@ -547,6 +547,14 @@ function touchStarted(e) {
 function startAudio() {
     bootLog('startAudio');
     background(BG_COLOR);
+    // FFT 분석기는 이전 값을 섞어(smoothing) 기억한다 → 메뉴에서 돌아와 다시 시작하면 직전 소리 값이
+    // 첫 프레임에 남아 오른쪽 끝에 점이 찍힘. 지금 입력(무음)으로 한 번 분석해 기억을 비운다.
+    if (fft && fft.analyser) {
+        const sm = fft.analyser.smoothingTimeConstant;
+        fft.analyser.smoothingTimeConstant = 0;
+        fft.analyze();
+        fft.analyser.smoothingTimeConstant = sm;
+    }
     if (!USE_MIC_INPUT) {
         // (iOS 오디오 세션 'playback' 설정은 index.html에서 AudioContext 생성 전에 함)
         getAudioContext().resume().then(() => bootLog('ctx resume → ' + getAudioContext().state));
