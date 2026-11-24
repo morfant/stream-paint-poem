@@ -752,11 +752,11 @@ function drawStartScreen() {
     items.push({ type: 'notice', h: noticeH });
     items.push({ type: 'gap', g: B.gapAfterNotice, note: true });
     const notes = [
-        ["* Works on desktop and mobile browsers. On a phone, landscape view is recommended", B.note, 12],
-        ["* 데스크톱과 모바일 브라우저에서 볼 수 있습니다. 휴대폰은 가로 화면을 권장합니다.", B.noteKo, 11.5],
+        ["Works on desktop and mobile browsers. On a phone, landscape view is recommended", B.note, 12],
+        ["데스크톱과 모바일 브라우저에서 볼 수 있습니다. 휴대폰은 가로 화면을 권장합니다.", B.noteKo, 11.5],
         null,
-        ["** For the intended layout and subtitle scale, please view at default browser zoom (100%)", B.note, 12],
-        ["** 의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", B.noteKo, 11.5],
+        ["For the intended layout and subtitle scale, please view at default browser zoom (100%)", B.note, 12],
+        ["의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", B.noteKo, 11.5],
     ];
     for (const n of notes) {
         if (!n) { items.push({ type: 'gap', g: B.gapNotes, note: true }); continue; }
