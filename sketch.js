@@ -54,7 +54,8 @@ let DESIGN_W = 1280;                  // 캔버스가 이보다 좁으면 이 �
 let START_BASE = {
     designW: 900, designH: 760,
     title: 40, titleKo: 36, date: 28, btnW: 120, btnH: 48, btnText: 20, note: 19, noteKo: 17, email: 19,
-    gapTitle: 14, gapAfterTitles: 110, gapBeforeButtons: 34, gapAfterButtons: 70, gapNotes: 14,
+    gapTitle: 14, gapAfterTitles: 110, gapBeforeButtons: 34, gapAfterButtons: 40, gapAfterNotice: 20, gapNotes: 14,
+    noticeText: 17, noticeH: 36,
 };
 
 // ■ 폰트/텍스트 리소스
@@ -123,7 +124,10 @@ let emailLinkEl;
 let copyrightEl;
 
 
+let showNotice = false;   // 메뉴 화면 안내 문장(* / **) 펼침 여부 — Notice 버튼으로 토글
+
 let ui = {
+    notice: null,
     kor: null,
     eng: null
     // langLabel: null // (optional, add if you want to reference a label area)
@@ -489,6 +493,11 @@ function mousePressed() {
 
         // ENG
         const sp = toStartCoords(mouseX, mouseY);
+        // Notice: 안내 문장 펼치기/접기
+        if (ui.notice && hit(sp.x, sp.y, ui.notice)) {
+            showNotice = !showNotice;
+            return;
+        }
         if (hit(sp.x, sp.y, ui.eng)) {
             lang = "ENG";
             sentences = sentencesENG;
@@ -739,6 +748,9 @@ function drawStartScreen() {
     const btnH = Math.max(42, B.btnH * k), btnW = Math.max(104, B.btnW * k), btnGap = Math.max(14, 18 * k);
     items.push({ type: 'buttons', h: btnH });
     gap(B.gapAfterButtons);
+    const noticeH = Math.max(32, B.noticeH * k), noticeText = Math.max(15, B.noticeText * k);
+    items.push({ type: 'notice', h: noticeH });
+    items.push({ type: 'gap', g: B.gapAfterNotice, note: true });
     const notes = [
         ["* Works on desktop and mobile browsers. On a phone, landscape view is recommended", B.note, 12],
         ["* 데스크톱과 모바일 브라우저에서 볼 수 있습니다. 휴대폰은 가로 화면을 권장합니다.", B.noteKo, 11.5],
@@ -747,7 +759,7 @@ function drawStartScreen() {
         ["** 의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", B.noteKo, 11.5],
     ];
     for (const n of notes) {
-        if (!n) { gap(B.gapNotes); continue; }
+        if (!n) { items.push({ type: 'gap', g: B.gapNotes, note: true }); continue; }
         const size = sz(n[1], n[2]);
         for (const l of wrap(n[0], englishFont2, size)) line(l, englishFont2, size, { note: true });
     }
@@ -757,17 +769,31 @@ function drawStartScreen() {
     const copyInFlow = H < 520;
     const copyPx = Math.max(11, 16 * k);
     const emailH = Math.max(14, B.email * k) * 1.6 + (copyInFlow ? copyPx * 1.5 : 0);
-    const textH = items.reduce((a, it) => a + (it.type === 'text' ? it.size * 1.3 : it.type === 'buttons' ? it.h : 0), 0);
+    const textH = items.reduce((a, it) => a + (it.type === 'text' ? it.size * 1.3 : (it.type === 'buttons' || it.type === 'notice') ? it.h : 0), 0);
     const gapsBase = items.reduce((a, it) => a + (it.type === 'gap' ? it.g : 0), 0);
     const avail = H * 0.94 - emailH;
     const gk = Math.max(0.15, Math.min(k, (avail - textH) / gapsBase));
     const total = textH + gapsBase * gk + emailH;
+    // 위치는 안내 문장을 펼친 상태 기준으로 잡는다 → Notice를 눌러도 제목·버튼이 움직이지 않음
     let y = Math.max(4, (H - total) / 2);
 
     // 그리기
     textAlign(CENTER, CENTER);
     for (const it of items) {
+        if (it.note && !showNotice) continue;   // 접힌 안내 문장은 건너뜀 (이메일이 Notice 바로 아래로)
         if (it.type === 'gap') { y += it.g * gk; continue; }
+        if (it.type === 'notice') {
+            textFont(englishFont2); textSize(noticeText);
+            const label = showNotice ? 'Notice  –' : 'Notice  +';   // 폰트에 있는 글자만 (▴▾는 없어서 네모로 보임)
+            const nw = textWidth(label) + noticeH;
+            ui.notice = { x: W / 2 - nw / 2, y, w: nw, h: noticeH };
+            noFill(); stroke(255, 160); strokeWeight(1);
+            rect(ui.notice.x, ui.notice.y, nw, noticeH, noticeH / 2);
+            noStroke(); fill(255, 200);
+            text(label, W / 2, y + noticeH / 2 - noticeText * 0.12);
+            y += noticeH;
+            continue;
+        }
         if (it.type === 'text') {
             const h = it.size * 1.3;
             noStroke(); fill(255);
@@ -823,7 +849,7 @@ function drawStartScreen() {
 
     // 커서 처리(풀스크린 아닐 때만)
     if (!fullscreen()) {
-        if (hit(mouseX, mouseY, ui.eng) || hit(mouseX, mouseY, ui.kor)) cursor(HAND);
+        if (hit(mouseX, mouseY, ui.eng) || hit(mouseX, mouseY, ui.kor) || (ui.notice && hit(mouseX, mouseY, ui.notice))) cursor(HAND);
         else cursor(ARROW);
     }
 }
