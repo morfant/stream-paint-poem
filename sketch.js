@@ -838,12 +838,13 @@ function drawStartScreen() {
                 copyrightEl.style('bottom', 'auto');
                 copyrightEl.style('top', Math.round(y + copyPx * 0.3) + 'px');
                 copyrightEl.style('white-space', 'nowrap');
-            } else {            // 왼쪽 아래 (기존)
+            } else {            // 아래 가운데
                 const m = Math.min(20, Math.max(8, W * 0.02));
-                copyrightEl.style('left', m + 'px');
-                copyrightEl.style('transform', 'none');
+                copyrightEl.style('left', '50%');
+                copyrightEl.style('transform', 'translateX(-50%)');
                 copyrightEl.style('top', 'auto');
                 copyrightEl.style('bottom', m + 'px');
+                copyrightEl.style('white-space', 'nowrap');
             }
         }
     }
