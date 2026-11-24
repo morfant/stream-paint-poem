@@ -391,7 +391,7 @@ function applyCanvasLayout(keepDrawing) {
     }
 
     const lay = computeCanvasLayout();
-    resizeCanvas(lay.w, lay.h);
+    resizeCanvas(lay.w, lay.h, true);   // noRedraw: 크기 바꾸는 순간 draw()가 끼어들지 않게
     canvas.position(lay.x, lay.y);
     canvasTop = lay.y;
     background(BG_COLOR);
@@ -534,9 +534,9 @@ function startAudio() {
         fadeInAudio(START_FADE_IN_MS);
     }
     started = true;
-    applyCanvasLayout(false);   // 메뉴용 화면 전체 캔버스 → 작품 비율(2.5:1) 캔버스로
     startTime = new Date();
-    cycleStartMillis = millis(); // 사이클 타이머 시작
+    cycleStartMillis = millis(); // 사이클 타이머 시작 — 캔버스 전환보다 먼저 (메뉴에 오래 있다 시작해도 첫 문장은 60초 뒤)
+    applyCanvasLayout(false);   // 메뉴용 화면 전체 캔버스 → 작품 비율(2.5:1) 캔버스로
     if (emailLinkEl) emailLinkEl.style('display', 'none');
     if (copyrightEl) copyrightEl.style('display', 'none');
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
