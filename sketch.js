@@ -53,7 +53,7 @@ let DESIGN_W = 1280;                  // 캔버스가 이보다 좁으면 이 �
 // 메뉴(시작) 화면 글씨·간격 기본값(px, 넓은 데스크톱 기준). 화면이 designW×designH보다 작으면 비율로 줄이되 최소 크기는 지킴
 let START_BASE = {
     designW: 900, designH: 760,
-    title: 40, titleKo: 36, date: 28, btnW: 120, btnH: 48, btnText: 20, note: 19, noteKo: 17, email: 19,
+    title: 40, titleKo: 36, date: 28, btnW: 120, btnH: 48, btnText: 26, note: 19, noteKo: 17, email: 19,
     gapTitle: 14, gapAfterTitles: 110, gapBeforeButtons: 34, gapAfterButtons: 40,
 };
 
@@ -121,6 +121,8 @@ let weatherTempC = null;
 
 let copyrightEl;
 
+
+const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
 
 let ui = {
     kor: null,
@@ -761,16 +763,29 @@ function drawStartScreen() {
             continue;
         }
         // ENG / KOR 버튼
-        const leftX = W / 2 - (btnW * 2 + btnGap) / 2;
-        ui.eng = { x: leftX, y, w: btnW, h: btnH };
-        ui.kor = { x: leftX + btnW + btnGap, y, w: btnW, h: btnH };
-        const btnText = Math.max(17, B.btnText * k);
-        for (const [r, label] of [[ui.eng, 'eng'], [ui.kor, 'kor']]) {
-            // 테두리 없이 글자만 (누를 수 있는 영역은 버튼 크기 그대로)
-            noStroke(); fill(255);
-            textFont(englishFont2); textSize(btnText);
-            text(label, r.x + r.w / 2, r.y + r.h / 2 - btnText * 0.15);
-        }
+        // eng  /  kor — 제목과 같은 세리프(Times)로, 가운데 흐린 '/'. 누를 수 있는 영역은 각 단어 둘레로 넉넉히
+        const btnText = Math.max(20, B.btnText * k);
+        textFont(englishFont); textSize(btnText);
+        const sepGap = btnText * 1.1;                  // 단어와 '/' 사이 간격
+        const engW = textWidth('eng'), korW = textWidth('kor'), slashW = textWidth('/');
+        const cy = y + btnH / 2 - btnText * 0.1;
+        const engCx = W / 2 - slashW / 2 - sepGap - engW / 2;
+        const korCx = W / 2 + slashW / 2 + sepGap + korW / 2;
+        // 누를 수 있는 영역: 단어 바깥쪽으로 넉넉히, 안쪽은 가운데 '/'에서 끊어 두 영역이 겹치지 않게
+        const pad = Math.max(btnW * 0.4, engW / 2 + btnText * 0.8);
+        ui.eng = { x: engCx - pad, y, w: (W / 2 - 1) - (engCx - pad), h: btnH };
+        ui.kor = { x: W / 2 + 1, y, w: (korCx + pad) - (W / 2 + 1), h: btnH };
+        noStroke(); fill(255);
+        text('eng', engCx, cy);
+        text('kor', korCx, cy);
+        fill(255, 110);
+        text('/', W / 2, cy);
+        // 마우스를 올리면 밑줄 (터치 기기는 해당 없음)
+        const uy = cy + btnText * 0.55;
+        stroke(255); strokeWeight(1);
+        if (!isTouchDevice && hit(mouseX, mouseY, ui.eng)) line(engCx - engW / 2, uy, engCx + engW / 2, uy);
+        if (!isTouchDevice && hit(mouseX, mouseY, ui.kor)) line(korCx - korW / 2, uy, korCx + korW / 2, uy);
+        noStroke();
         y += btnH;
     }
 
