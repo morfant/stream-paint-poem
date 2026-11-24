@@ -781,16 +781,13 @@ function drawStartScreen() {
         if (it.type === 'gap') { y += it.g * gk; continue; }
         if (it.type === 'notice') {
             textFont(englishFont2); textSize(noticeText);
-            const label = 'Notice';
+            const label = showNotice ? 'Notice  \u2013' : 'Notice  +';   // 펼침 –, 접힘 + (폰트에 있는 글자)
             const tw = textWidth(label), nw = tw + noticeH;
             ui.notice = { x: W / 2 - nw / 2, y, w: nw, h: noticeH };
-            // 테두리 없이 글자 + 밑줄만 (누를 수 있는 영역은 글자 주변 여유 포함)
+            // 테두리·밑줄 없이 글자만 (누를 수 있는 영역은 글자 주변 여유 포함)
             const ty = y + noticeH / 2 - noticeText * 0.12;
             noStroke(); fill(255, 200);
             text(label, W / 2, ty);
-            stroke(255, 200); strokeWeight(1);
-            line(W / 2 - tw / 2, ty + noticeText * 0.62, W / 2 + tw / 2, ty + noticeText * 0.62);
-            noStroke();
             y += noticeH;
             continue;
         }
@@ -809,8 +806,7 @@ function drawStartScreen() {
         ui.kor = { x: leftX + btnW + btnGap, y, w: btnW, h: btnH };
         const btnText = Math.max(17, B.btnText * k);
         for (const [r, label] of [[ui.eng, 'ENG'], [ui.kor, 'KOR']]) {
-            noFill(); stroke(255); strokeWeight(1.5);
-            rect(r.x, r.y, r.w, r.h, r.h / 2);
+            // 테두리 없이 글자만 (누를 수 있는 영역은 버튼 크기 그대로)
             noStroke(); fill(255);
             textFont(englishFont2); textSize(btnText);
             text(label, r.x + r.w / 2, r.y + r.h / 2 - btnText * 0.15);
