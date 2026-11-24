@@ -779,16 +779,17 @@ function drawStartScreen() {
         const pad = Math.max(btnW * 0.4, engW / 2 + btnText * 0.8);
         ui.eng = { x: engCx - pad, y, w: (W / 2 - 1) - (engCx - pad), h: btnH };
         ui.kor = { x: W / 2 + 1, y, w: (korCx + pad) - (W / 2 + 1), h: btnH };
-        noStroke(); fill(255);
-        text('eng', engCx, cy);
-        text('kor', korCx, cy);
-        fill(255, 110);
-        text('/', W / 2, cy);
-        // 마우스를 올리면 밑줄 (터치 기기는 해당 없음)
+        // 기본은 흰색 75% (얇은 글꼴들 사이에서 너무 진해 보이지 않게), 마우스를 올리면 100% + 밑줄
+        const overEng = !isTouchDevice && hit(mouseX, mouseY, ui.eng);
+        const overKor = !isTouchDevice && hit(mouseX, mouseY, ui.kor);
         const uy = cy + btnText * 0.55;
+        noStroke();
+        fill(255, overEng ? 255 : 190); text('eng', engCx, cy);
+        fill(255, overKor ? 255 : 190); text('kor', korCx, cy);
+        fill(255, 100); text('/', W / 2, cy);
         stroke(255); strokeWeight(1);
-        if (!isTouchDevice && hit(mouseX, mouseY, ui.eng)) line(engCx - engW / 2, uy, engCx + engW / 2, uy);
-        if (!isTouchDevice && hit(mouseX, mouseY, ui.kor)) line(korCx - korW / 2, uy, korCx + korW / 2, uy);
+        if (overEng) line(engCx - engW / 2, uy, engCx + engW / 2, uy);
+        if (overKor) line(korCx - korW / 2, uy, korCx + korW / 2, uy);
         noStroke();
         y += btnH;
     }
