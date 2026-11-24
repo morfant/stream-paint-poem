@@ -50,7 +50,12 @@ let SUBTITLE_RESERVE_LINES = 2;       // 캔버스 아래 여백이 이 줄 수�
 
 // ■ 작은 화면 대응
 let DESIGN_W = 1280;                  // 캔버스가 이보다 좁으면 이 폭 기준으로 그린 뒤 축소 (넓으면 그대로)
-let START_DESIGN_W = 820, START_DESIGN_H = 680; // 시작 화면이 잘리지 않는 최소 크기(이보다 작으면 축소)
+// 메뉴(시작) 화면 글씨·간격 기본값(px, 넓은 데스크톱 기준). 화면이 designW×designH보다 작으면 비율로 줄이되 최소 크기는 지킴
+let START_BASE = {
+    designW: 900, designH: 760,
+    title: 40, titleKo: 36, date: 28, btnW: 120, btnH: 48, btnText: 20, note: 19, noteKo: 17, email: 19,
+    gapTitle: 14, gapAfterTitles: 110, gapBeforeButtons: 34, gapAfterButtons: 70, gapNotes: 14,
+};
 
 // ■ 폰트/텍스트 리소스
 let MSG_SIZE = 31;
@@ -107,8 +112,8 @@ let subtitleEl;
 let subtitleTimeout = null;
 let baseDevicePixelRatio = 1; // 브라우저 줌 감지용 기준값
 
-// 작은 화면 축소 배율: 시각화는 S(가상 크기 VW×VH), 시작 화면은 SS
-let S = 1, VW = 0, VH = 0, SS = 1;
+// 작은 화면 축소 배율: 시각화는 S(가상 크기 VW×VH)
+let S = 1, VW = 0, VH = 0;
 let canvasTop = 0;            // 캔버스 위쪽 위치(px) — 자막 위치 기준
 
 let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 'thunder'
@@ -116,7 +121,6 @@ let weatherTempC = null;
 
 let emailLinkEl;
 let copyrightEl;
-let portraitHintEl;
 
 
 let ui = {
@@ -281,17 +285,6 @@ function setup() {
     copyrightEl.style('pointer-events', 'none');
     copyrightEl.style('z-index', '10');
 
-    portraitHintEl = createElement('div', 'Rotate your phone for a larger view · 가로로 돌리면 크게 볼 수 있어요');
-    portraitHintEl.style('position', 'fixed');
-    portraitHintEl.style('left', '0');
-    portraitHintEl.style('width', '100%');
-    portraitHintEl.style('top', '24px');
-    portraitHintEl.style('text-align', 'center');
-    portraitHintEl.style('color', 'rgba(255,255,255,0.7)');
-    portraitHintEl.style('font-family', "'NotoSansKR-Thin', 'Times New Roman', serif");
-    portraitHintEl.style('font-size', '13px');
-    portraitHintEl.style('pointer-events', 'none');
-    portraitHintEl.style('z-index', '10');
     updateStartDomLayout();
     bootLog('setup done');
 }
@@ -362,6 +355,7 @@ function keyPressed() {
 // 여백이 충분하면(데스크톱) 기존처럼 화면 가운데.
 function computeCanvasLayout() {
     const W = windowWidth, H = windowHeight;
+    if (!started) return { w: W, h: H, x: 0, y: 0 };   // 메뉴 화면은 화면 전체
     let w = W, h = H;
     if (w / h > ASPECT_RATIO) w = h * ASPECT_RATIO;
     else h = w / ASPECT_RATIO;
@@ -382,10 +376,15 @@ function computeCanvasLayout() {
 
 function windowResized() {
     bootLog('resize ' + windowWidth + 'x' + windowHeight);
+    applyCanvasLayout(started);
+}
+
+// 캔버스 크기·위치 다시 맞추기. keepDrawing이면 지금까지의 그림을 새 크기로 옮겨 깐다.
+function applyCanvasLayout(keepDrawing) {
     // 작품이 돌고 있으면 크기를 바꾸기 전에 지금까지의 그림을 복사해 둔다 (전체화면 전환·회전 때 흔적 유지)
     let snap = null;
     const oldVW = VW;
-    if (started) {
+    if (keepDrawing) {
         snap = document.createElement('canvas');
         snap.width = canvas.elt.width; snap.height = canvas.elt.height;
         snap.getContext('2d').drawImage(canvas.elt, 0, 0);
@@ -424,33 +423,17 @@ function updateScale() {
     VW = width / S;
     VH = height / S;
     visualizeMul = VW * VISUALIZE_INTENSITY_MUL;
-    SS = Math.min(1, width / START_DESIGN_W, height / START_DESIGN_H);
 }
 
-// 시작 화면의 HTML 요소(이메일·저작권)도 시작 화면 배율에 맞춤
+// 시작 화면의 HTML 요소: 이메일 위치·크기는 drawStartScreen()이 매 프레임 맞춘다. 저작권은 왼쪽 아래 여백만.
 function updateStartDomLayout() {
-    if (emailLinkEl) {
-        emailLinkEl.style('top', `calc(50% + ${324 * SS}px)`);
-        emailLinkEl.style('font-size', Math.max(11, 18 * SS) + 'px');
-    }
-    if (copyrightEl) {
-        copyrightEl.style('left', Math.max(8, 20 * SS) + 'px');
-        copyrightEl.style('bottom', Math.max(8, 20 * SS) + 'px');
-        copyrightEl.style('font-size', Math.max(10, 16 * SS) + 'px');
-    }
-    updatePortraitHint();
+    // 이메일·저작권 위치는 drawStartScreen()이 화면 크기에 맞춰 정한다
+    if (copyrightEl) copyrightEl.elt.dataset.key = '';
 }
 
-// 세로 화면(폰)일 때 가로로 돌려 보라는 안내 (막지는 않음)
-function updatePortraitHint() {
-    if (!portraitHintEl) return;
-    const isPortraitTouch = windowHeight > windowWidth && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
-    portraitHintEl.style('display', isPortraitTouch && !started ? 'block' : 'none');
-}
-
-// 화면 좌표 → 시작 화면 그리기 좌표 (중심 기준 SS 축소 역변환)
+// 화면 좌표 → 시작 화면 그리기 좌표 (메뉴는 화면 전체 캔버스에 그대로 그리므로 같음)
 function toStartCoords(mx, my) {
-    return { x: (mx - width / 2) / SS + width / 2, y: (my - height / 2) / SS + height / 2 };
+    return { x: mx, y: my };
 }
 
 function updateSubtitlePosition() {
@@ -551,11 +534,11 @@ function startAudio() {
         fadeInAudio(START_FADE_IN_MS);
     }
     started = true;
+    applyCanvasLayout(false);   // 메뉴용 화면 전체 캔버스 → 작품 비율(2.5:1) 캔버스로
     startTime = new Date();
     cycleStartMillis = millis(); // 사이클 타이머 시작
     if (emailLinkEl) emailLinkEl.style('display', 'none');
     if (copyrightEl) copyrightEl.style('display', 'none');
-    if (portraitHintEl) portraitHintEl.style('display', 'none');
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
     if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) fullscreen(true);
 }
@@ -711,102 +694,138 @@ function draw() {
 
 function drawStartScreen() {
     background(BG_COLOR);
-    // 작은 화면: 중심 기준으로 SS 만큼 축소 (넓은 화면은 SS=1 → 기존과 동일)
-    push();
-    translate(width / 2 * (1 - SS), height / 2 * (1 - SS));
-    scale(SS);
-    fill(255);
-    textAlign(CENTER, CENTER);
-    strokeWeight(0.1);
-
-    textFont(englishFont);
-    textSize(30);
-    text("Some-bodies are listening, too", width / 2, height / 2 - 220);
-
-    textFont(koreanFont);
-    textSize(28);
-    text("누군가 듣고 있어", width / 2, height / 2 - 160);
-
-    // [아이콘 테스트용 — 필요시 주석 해제]
-    // const _iconTypes = ['clear', 'cloudy', 'rain', 'snow', 'fog', 'thunder'];
-    // const _testIcon = _iconTypes[Math.floor(millis() / 5000) % _iconTypes.length];
-    // drawWeatherIcon(width / 2, height / 2 - 98, _testIcon);
-
-    // textFont(englishFont2);
-    // textSize(20);
-    // text("Jiyeon Kim, Gangil Yi", width / 2, height / 2 - 150);
-
-    textFont(englishFont2);
-    textSize(25);
-    noStroke();
-    fill(255);
+    // 메뉴 화면은 화면 전체 캔버스에 흐름 배치(위→아래)로 그린다.
+    // 기본 크기는 넓은 데스크톱 기준(START_BASE), 화면이 작으면 k로 줄이되 글씨마다 최소 크기를 지킨다.
+    // 제목·날짜는 폭에 맞춰 줄이고, 아래 안내 문장은 줄바꿈한다.
+    const W = width, H = height, maxW = W * 0.9;
+    const B = START_BASE;
+    const k = Math.min(1, H / B.designH, W / B.designW);
+    const sz = (base, min) => Math.max(min, base * k);
     const weatherSuffix = weatherIconType
         ? '  ·  ' + weatherIconType[0].toUpperCase() + weatherIconType.slice(1)
         : '  ·  ' + '- - - - -'; // 데이터 대기 중: 대시 placeholder (도착하면 날씨 이름으로 교체)
-    text(getFormattedKoreanTime() + weatherSuffix, width / 2, height / 2 + 40);
 
-    // --- Live (텍스트, 버튼 아님) ---
-    textFont(englishFont2);
-    textSize(24);
-    noStroke();
-    fill(255);
-    // text("Live", width / 2, height / 2 + 110);
+    // 한 줄에 맞추기(줄이기) / 줄바꿈
+    const fitSize = (str, font, size) => {
+        textFont(font); textSize(size);
+        const w = textWidth(str);
+        return w > maxW ? size * maxW / w : size;
+    };
+    const wrap = (str, font, size) => {
+        textFont(font); textSize(size);
+        if (textWidth(str) <= maxW) return [str];
+        const words = str.split(' '), lines = [];
+        let cur = '';
+        for (const wd of words) {
+            const t = cur ? cur + ' ' + wd : wd;
+            if (textWidth(t) > maxW && cur) { lines.push(cur); cur = wd; } else cur = t;
+        }
+        if (cur) lines.push(cur);
+        return lines;
+    };
 
-    // --- 설명 라인 ---
-    textSize(14);
-    // text("Select language", width / 2, height / 2 + 145);
+    // 배치 항목 만들기
+    const items = [];
+    const line = (str, font, size, opts = {}) => items.push({ type: 'text', str, font, size, ...opts });
+    const gap = (g) => items.push({ type: 'gap', g });
+    const enT = "Some-bodies are listening, too", koT = "누군가 듣고 있어";
+    const dateT = getFormattedKoreanTime() + weatherSuffix;
+    line(enT, englishFont, fitSize(enT, englishFont, sz(B.title, 22)));
+    gap(B.gapTitle);
+    line(koT, koreanFont, fitSize(koT, koreanFont, sz(B.titleKo, 20)));
+    gap(B.gapAfterTitles);
+    line(dateT, englishFont2, fitSize(dateT, englishFont2, sz(B.date, 14)));
+    gap(B.gapBeforeButtons);
+    const btnH = Math.max(42, B.btnH * k), btnW = Math.max(104, B.btnW * k), btnGap = Math.max(14, 18 * k);
+    items.push({ type: 'buttons', h: btnH });
+    gap(B.gapAfterButtons);
+    const notes = [
+        ["* Works on desktop and mobile browsers. On a phone, landscape view is recommended", B.note, 12],
+        ["* 데스크톱과 모바일 브라우저에서 볼 수 있습니다. 휴대폰은 가로 화면을 권장합니다.", B.noteKo, 11.5],
+        null,
+        ["** For the intended layout and subtitle scale, please view at default browser zoom (100%)", B.note, 12],
+        ["** 의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", B.noteKo, 11.5],
+    ];
+    for (const n of notes) {
+        if (!n) { gap(B.gapNotes); continue; }
+        const size = sz(n[1], n[2]);
+        for (const l of wrap(n[0], englishFont2, size)) line(l, englishFont2, size, { note: true });
+    }
 
-    // --- ENG / KOR 버튼 (설명 아래) ---
-    let langY = height / 2 + 170;
-    let btnW = 90, btnH = 34, gap = 14;
-    let totalW = btnW * 2 + gap;
-    let leftX = width / 2 - totalW / 2;
+    // 높이 계산: 글씨 높이는 고정, 넘치면 간격부터 줄임
+    // 높이가 낮은 화면(폰 가로 등)에서는 저작권 표시를 이메일 아래 가운데로 옮겨 겹치지 않게
+    const copyInFlow = H < 520;
+    const copyPx = Math.max(11, 16 * k);
+    const emailH = Math.max(14, B.email * k) * 1.6 + (copyInFlow ? copyPx * 1.5 : 0);
+    const textH = items.reduce((a, it) => a + (it.type === 'text' ? it.size * 1.3 : it.type === 'buttons' ? it.h : 0), 0);
+    const gapsBase = items.reduce((a, it) => a + (it.type === 'gap' ? it.g : 0), 0);
+    const avail = H * 0.94 - emailH;
+    const gk = Math.max(0.15, Math.min(k, (avail - textH) / gapsBase));
+    const total = textH + gapsBase * gk + emailH;
+    let y = Math.max(4, (H - total) / 2);
 
-    ui.eng = { x: leftX, y: langY - 80, w: btnW, h: btnH };
-    ui.kor = { x: leftX + btnW + gap, y: langY - 80, w: btnW, h: btnH };
+    // 그리기
+    textAlign(CENTER, CENTER);
+    for (const it of items) {
+        if (it.type === 'gap') { y += it.g * gk; continue; }
+        if (it.type === 'text') {
+            const h = it.size * 1.3;
+            noStroke(); fill(255);
+            strokeWeight(it.note ? 0.3 : 0.1);
+            textFont(it.font); textSize(it.size);
+            text(it.str, W / 2, y + h / 2);
+            y += h;
+            continue;
+        }
+        // ENG / KOR 버튼
+        const leftX = W / 2 - (btnW * 2 + btnGap) / 2;
+        ui.eng = { x: leftX, y, w: btnW, h: btnH };
+        ui.kor = { x: leftX + btnW + btnGap, y, w: btnW, h: btnH };
+        const btnText = Math.max(17, B.btnText * k);
+        for (const [r, label] of [[ui.eng, 'ENG'], [ui.kor, 'KOR']]) {
+            noFill(); stroke(255); strokeWeight(1.5);
+            rect(r.x, r.y, r.w, r.h, r.h / 2);
+            noStroke(); fill(255);
+            textFont(englishFont2); textSize(btnText);
+            text(label, r.x + r.w / 2, r.y + r.h / 2 - btnText * 0.15);
+        }
+        y += btnH;
+    }
 
-    // ENG (항상 비어있는 버튼, 선택 시 테두리 두께만 변경)
-    noFill();
-    stroke(255);
-    strokeWeight(lang === "ENG" ? 1.5 : 1.5);
-    rect(ui.eng.x, ui.eng.y, ui.eng.w, ui.eng.h, 16);
-
-    noStroke();
-    fill(255);
-    textFont(englishFont2);
-    textSize(16);
-    text("ENG", ui.eng.x + ui.eng.w / 2, ui.eng.y + ui.eng.h / 2 - 3);
-
-    // KOR (항상 비어있는 버튼, 선택 시 테두리 두께만 변경)
-    noFill();
-    stroke(255);
-    strokeWeight(lang === "KOR" ? 1.5 : 1.5);
-    rect(ui.kor.x, ui.kor.y, ui.kor.w, ui.kor.h, 16);
-
-    noStroke();
-    fill(255);
-    text("KOR", ui.kor.x + ui.kor.w / 2, ui.kor.y + ui.kor.h / 2 - 3);
+    // 이메일(HTML 링크)을 안내 문장 바로 아래에, 저작권은 왼쪽 아래
+    const emailPx = Math.max(14, B.email * k);
+    const emailTop = Math.round(y + Math.max(14, B.email * k) * 0.8);
+    if (emailLinkEl && emailLinkEl.elt.dataset.top !== String(emailTop) + '/' + emailPx) {
+        emailLinkEl.elt.dataset.top = String(emailTop) + '/' + emailPx;
+        emailLinkEl.style('top', emailTop + 'px');
+        emailLinkEl.style('font-size', emailPx + 'px');
+    }
+    if (copyrightEl) {
+        const key = copyInFlow + '/' + Math.round(y) + '/' + copyPx;
+        if (copyrightEl.elt.dataset.key !== key) {
+            copyrightEl.elt.dataset.key = key;
+            copyrightEl.style('font-size', copyPx + 'px');
+            if (copyInFlow) {   // 이메일 아래 가운데
+                copyrightEl.style('left', '50%');
+                copyrightEl.style('transform', 'translateX(-50%)');
+                copyrightEl.style('bottom', 'auto');
+                copyrightEl.style('top', Math.round(y + Math.max(14, B.email * k) * 1.6) + 'px');
+                copyrightEl.style('white-space', 'nowrap');
+            } else {            // 왼쪽 아래 (기존)
+                const m = Math.min(20, Math.max(8, W * 0.02));
+                copyrightEl.style('left', m + 'px');
+                copyrightEl.style('transform', 'none');
+                copyrightEl.style('top', 'auto');
+                copyrightEl.style('bottom', m + 'px');
+            }
+        }
+    }
 
     // 커서 처리(풀스크린 아닐 때만)
     if (!fullscreen()) {
-        const sp = toStartCoords(mouseX, mouseY);
-        let overEng = hit(sp.x, sp.y, ui.eng);
-        let overKor = hit(sp.x, sp.y, ui.kor);
-        if (overEng || overKor) cursor(HAND);
+        if (hit(mouseX, mouseY, ui.eng) || hit(mouseX, mouseY, ui.kor)) cursor(HAND);
         else cursor(ARROW);
     }
-
-    strokeWeight(0.3);
-    fill(255);
-    textSize(18);
-    text("* Works on desktop and mobile browsers. On a phone, landscape view is recommended", width / 2, height / 2 + 216);
-    textSize(16);
-    text("* 데스크톱과 모바일 브라우저에서 볼 수 있습니다. 휴대폰은 가로 화면을 권장합니다.", width / 2, height / 2 + 240);
-    textSize(18);
-    text("** For the intended layout and subtitle scale, please view at default browser zoom (100%)", width / 2, height / 2 + 268);
-    textSize(16);
-    text("** 의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", width / 2, height / 2 + 292);
-    pop();
 }
 
 
