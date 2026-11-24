@@ -50,7 +50,12 @@ let SUBTITLE_RESERVE_LINES = 2;       // 캔버스 아래 여백이 이 줄 수�
 
 // ■ 작은 화면 대응
 let DESIGN_W = 1280;                  // 캔버스가 이보다 좁으면 이 폭 기준으로 그린 뒤 축소 (넓으면 그대로)
-let START_DESIGN_W = 820, START_DESIGN_H = 680; // 시작 화면이 잘리지 않는 최소 크기(이보다 작으면 축소)
+// 메뉴(시작) 화면 글씨·간격 기본값(px, 넓은 데스크톱 기준). 화면이 designW×designH보다 작으면 비율로 줄이되 최소 크기는 지킴
+let START_BASE = {
+    designW: 900, designH: 760,
+    title: 40, titleKo: 36, date: 28, btnW: 120, btnH: 48, btnText: 26, note: 19, noteKo: 17, email: 19,
+    gapTitle: 14, gapAfterTitles: 110, gapBeforeButtons: 34, gapAfterButtons: 40,
+};
 
 // ■ 폰트/텍스트 리소스
 let MSG_SIZE = 31;
@@ -107,17 +112,18 @@ let subtitleEl;
 let subtitleTimeout = null;
 let baseDevicePixelRatio = 1; // 브라우저 줌 감지용 기준값
 
-// 작은 화면 축소 배율: 시각화는 S(가상 크기 VW×VH), 시작 화면은 SS
-let S = 1, VW = 0, VH = 0, SS = 1;
+// 작은 화면 축소 배율: 시각화는 S(가상 크기 VW×VH)
+let S = 1, VW = 0, VH = 0;
 let canvasTop = 0;            // 캔버스 위쪽 위치(px) — 자막 위치 기준
 
 let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 'thunder'
 let weatherTempC = null;
 
-let emailLinkEl;
 let copyrightEl;
-let portraitHintEl;
+let exitBtnEl;   // 작품 중 메뉴로 돌아가는 × 버튼
 
+
+let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
 
 let ui = {
     kor: null,
@@ -234,6 +240,7 @@ function setup() {
                 streamDecoder = new StreamDecoder(context, AUDIO_URL);
                 await streamDecoder.init();
                 bootLog('decoder ready');
+                streamDecoder.onplaying = onStreamPlaying;
                 streamDecoder.output.connect(gainOut);
                 streamDecoder.output.connect(gainFFT);
             }).catch((e) => { bootLog('decoder init fail: ' + e); if (!streamDecoder && !audio) setupMediaElementAudio(context); });
@@ -260,18 +267,34 @@ function setup() {
     subtitleEl.style('pointer-events', 'none');
     if (!SHOW_SUBTITLE) subtitleEl.style('display', 'none');
 
-    emailLinkEl = createA('mailto:weatherreport.live@gmail.com', 'weatherreport.live@gmail.com');
-    emailLinkEl.style('position', 'fixed');
-    emailLinkEl.style('left', '50%');
-    emailLinkEl.style('top', 'calc(50% + 290px)');
-    emailLinkEl.style('transform', 'translate(-50%, -50%)');
-    emailLinkEl.style('color', 'white');
-    emailLinkEl.style('font-family', "'NotoSansKR-Thin', 'Times New Roman', serif");
-    emailLinkEl.style('font-size', '18px');
-    emailLinkEl.style('text-decoration', 'underline');
-    emailLinkEl.style('z-index', '10');
+    // 저작권 줄 + 오른쪽에 편지봉투 아이콘(메일 보내기 링크)
+    copyrightEl = createElement('div',
+        '<span>© 2025 - 2026 Weather Report (Jiyeon Kim, Gangil Yi)</span>' +
+        '<a href="mailto:weatherreport.live@gmail.com" aria-label="Email weatherreport.live@gmail.com" title="weatherreport.live@gmail.com"' +
+        ' style="pointer-events:auto;color:inherit;display:inline-flex;align-items:center;margin-left:0.55em;padding:0.35em;margin-top:-0.35em;margin-bottom:-0.35em;vertical-align:middle">' +
+        '<svg width="1.25em" height="1.25em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" style="transform:translateY(0.12em)">' +
+        '<rect x="3" y="5.5" width="18" height="13" rx="1.2"/><path d="M3.6 6.4 12 12.8l8.4-6.4"/></svg></a>');
+    copyrightEl.style('display', 'flex');
+    copyrightEl.style('align-items', 'center');
 
-    copyrightEl = createElement('div', '© 2025 - 2026 Weather Report (Jiyeon Kim, Gangil Yi)');
+    exitBtnEl = createElement('button',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
+        '<path d="M6 6l12 12M18 6 6 18"/></svg>');
+    exitBtnEl.attribute('aria-label', 'Back to menu');
+    exitBtnEl.attribute('title', 'Back to menu');
+    exitBtnEl.style('position', 'fixed');
+    exitBtnEl.style('top', 'calc(env(safe-area-inset-top, 0px) + 10px)');
+    exitBtnEl.style('right', 'calc(env(safe-area-inset-right, 0px) + 10px)');
+    exitBtnEl.style('padding', '12px');
+    exitBtnEl.style('background', 'rgba(0,0,0,0.35)');
+    exitBtnEl.style('border', 'none');
+    exitBtnEl.style('border-radius', '50%');
+    exitBtnEl.style('color', 'rgba(255,255,255,0.85)');
+    exitBtnEl.style('line-height', '0');
+    exitBtnEl.style('cursor', 'pointer');
+    exitBtnEl.style('z-index', '30');
+    exitBtnEl.style('display', 'none');
+    exitBtnEl.elt.addEventListener('click', (ev) => { ev.stopPropagation(); returnToMenu(); });
     copyrightEl.style('position', 'fixed');
     copyrightEl.style('left', '20px');
     copyrightEl.style('bottom', '20px');
@@ -281,17 +304,6 @@ function setup() {
     copyrightEl.style('pointer-events', 'none');
     copyrightEl.style('z-index', '10');
 
-    portraitHintEl = createElement('div', 'Rotate your phone for a larger view · 가로로 돌리면 크게 볼 수 있어요');
-    portraitHintEl.style('position', 'fixed');
-    portraitHintEl.style('left', '0');
-    portraitHintEl.style('width', '100%');
-    portraitHintEl.style('top', '24px');
-    portraitHintEl.style('text-align', 'center');
-    portraitHintEl.style('color', 'rgba(255,255,255,0.7)');
-    portraitHintEl.style('font-family', "'NotoSansKR-Thin', 'Times New Roman', serif");
-    portraitHintEl.style('font-size', '13px');
-    portraitHintEl.style('pointer-events', 'none');
-    portraitHintEl.style('z-index', '10');
     updateStartDomLayout();
     bootLog('setup done');
 }
@@ -312,9 +324,11 @@ function setupMediaElementAudio(context) {
     let reconnectTimer = null;
 
     const scheduleReconnect = () => {
+        if (!started) return;       // 메뉴로 돌아간 상태면 재연결 안 함
         if (reconnectTimer) return; // 이미 예약돼 있으면 무시
         reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
+            if (!started) return;
             audio.src = `${AUDIO_URL}?t=${Date.now()}`;
             audio.play()
                 .then(() => { reconnectDelay = RECONNECT_BASE_MS; }) // 성공 시 지연 리셋
@@ -329,7 +343,7 @@ function setupMediaElementAudio(context) {
     audio.addEventListener('stalled', scheduleReconnect);
     audio.addEventListener('error', scheduleReconnect);
     // 정상 재생 시작 시 backoff 리셋
-    audio.addEventListener('playing', () => { reconnectDelay = RECONNECT_BASE_MS; });
+    audio.addEventListener('playing', () => { reconnectDelay = RECONNECT_BASE_MS; onStreamPlaying(); });
 
     source = context.createMediaElementSource(audio);
     source.connect(gainOut);
@@ -362,6 +376,7 @@ function keyPressed() {
 // 여백이 충분하면(데스크톱) 기존처럼 화면 가운데.
 function computeCanvasLayout() {
     const W = windowWidth, H = windowHeight;
+    if (!started) return { w: W, h: H, x: 0, y: 0 };   // 메뉴 화면은 화면 전체
     let w = W, h = H;
     if (w / h > ASPECT_RATIO) w = h * ASPECT_RATIO;
     else h = w / ASPECT_RATIO;
@@ -382,17 +397,22 @@ function computeCanvasLayout() {
 
 function windowResized() {
     bootLog('resize ' + windowWidth + 'x' + windowHeight);
+    applyCanvasLayout(started);
+}
+
+// 캔버스 크기·위치 다시 맞추기. keepDrawing이면 지금까지의 그림을 새 크기로 옮겨 깐다.
+function applyCanvasLayout(keepDrawing) {
     // 작품이 돌고 있으면 크기를 바꾸기 전에 지금까지의 그림을 복사해 둔다 (전체화면 전환·회전 때 흔적 유지)
     let snap = null;
     const oldVW = VW;
-    if (started) {
+    if (keepDrawing) {
         snap = document.createElement('canvas');
         snap.width = canvas.elt.width; snap.height = canvas.elt.height;
         snap.getContext('2d').drawImage(canvas.elt, 0, 0);
     }
 
     const lay = computeCanvasLayout();
-    resizeCanvas(lay.w, lay.h);
+    resizeCanvas(lay.w, lay.h, true);   // noRedraw: 크기 바꾸는 순간 draw()가 끼어들지 않게
     canvas.position(lay.x, lay.y);
     canvasTop = lay.y;
     background(BG_COLOR);
@@ -424,33 +444,17 @@ function updateScale() {
     VW = width / S;
     VH = height / S;
     visualizeMul = VW * VISUALIZE_INTENSITY_MUL;
-    SS = Math.min(1, width / START_DESIGN_W, height / START_DESIGN_H);
 }
 
-// 시작 화면의 HTML 요소(이메일·저작권)도 시작 화면 배율에 맞춤
+// 시작 화면의 HTML 요소: 이메일 위치·크기는 drawStartScreen()이 매 프레임 맞춘다. 저작권은 왼쪽 아래 여백만.
 function updateStartDomLayout() {
-    if (emailLinkEl) {
-        emailLinkEl.style('top', `calc(50% + ${324 * SS}px)`);
-        emailLinkEl.style('font-size', Math.max(11, 18 * SS) + 'px');
-    }
-    if (copyrightEl) {
-        copyrightEl.style('left', Math.max(8, 20 * SS) + 'px');
-        copyrightEl.style('bottom', Math.max(8, 20 * SS) + 'px');
-        copyrightEl.style('font-size', Math.max(10, 16 * SS) + 'px');
-    }
-    updatePortraitHint();
+    // 이메일·저작권 위치는 drawStartScreen()이 화면 크기에 맞춰 정한다
+    if (copyrightEl) copyrightEl.elt.dataset.key = '';
 }
 
-// 세로 화면(폰)일 때 가로로 돌려 보라는 안내 (막지는 않음)
-function updatePortraitHint() {
-    if (!portraitHintEl) return;
-    const isPortraitTouch = windowHeight > windowWidth && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
-    portraitHintEl.style('display', isPortraitTouch && !started ? 'block' : 'none');
-}
-
-// 화면 좌표 → 시작 화면 그리기 좌표 (중심 기준 SS 축소 역변환)
+// 화면 좌표 → 시작 화면 그리기 좌표 (메뉴는 화면 전체 캔버스에 그대로 그리므로 같음)
 function toStartCoords(mx, my) {
-    return { x: (mx - width / 2) / SS + width / 2, y: (my - height / 2) / SS + height / 2 };
+    return { x: mx, y: my };
 }
 
 function updateSubtitlePosition() {
@@ -526,13 +530,17 @@ function mousePressed() {
         return;
     }
 
+    // 시작 후: 탭하면 × (메뉴로) 버튼 보이기
+    showControls();
     // 시작 후: 오디오가 멈춰 있으면(iOS 전화·알림·세션 끊김 등) 탭으로 다시 깨움
     if (getAudioContext().state !== 'running') {
         getAudioContext().resume().then(() => bootLog('tap resume → ' + getAudioContext().state));
     }
 }
 
-function touchStarted() {
+function touchStarted(e) {
+    // 링크(저작권 옆 편지봉투 등)를 누른 터치는 막지 않는다 — false를 돌려주면 브라우저가 링크로 처리하지 못함
+    if (e && e.target && e.target.closest && e.target.closest('a, button')) return true;
     mousePressed();
     return false;
 }
@@ -540,6 +548,14 @@ function touchStarted() {
 function startAudio() {
     bootLog('startAudio');
     background(BG_COLOR);
+    // FFT 분석기는 이전 값을 섞어(smoothing) 기억한다 → 메뉴에서 돌아와 다시 시작하면 직전 소리 값이
+    // 첫 프레임에 남아 오른쪽 끝에 점이 찍힘. 지금 입력(무음)으로 한 번 분석해 기억을 비운다.
+    if (fft && fft.analyser) {
+        const sm = fft.analyser.smoothingTimeConstant;
+        fft.analyser.smoothingTimeConstant = 0;
+        fft.analyze();
+        fft.analyser.smoothingTimeConstant = sm;
+    }
     if (!USE_MIC_INPUT) {
         // (iOS 오디오 세션 'playback' 설정은 index.html에서 AudioContext 생성 전에 함)
         getAudioContext().resume().then(() => bootLog('ctx resume → ' + getAudioContext().state));
@@ -548,14 +564,19 @@ function startAudio() {
             if (streamDecoder) startDecoderWhenRunning();
             else if (audio && audio.paused) audio.play();
         });
-        fadeInAudio(START_FADE_IN_MS);
+        // 페이드인은 소리가 실제로 나오기 시작할 때(onStreamPlaying) 시작 — 스트림 연결·버퍼링에 몇 초 걸려서
+        // 누르는 순간 시작하면 소리가 나올 즈음엔 이미 볼륨이 올라가 있어 갑자기 시작되는 것처럼 들림
+        if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
+        if (gainOut) gainOut.gain.value = OUTPUT_START_GAIN;
+        fadePending = true;
+        clearTimeout(fadeFallbackTimer);
+        fadeFallbackTimer = setTimeout(onStreamPlaying, 12000);   // 신호를 못 받아도 12초 뒤엔 페이드인
     }
     started = true;
     startTime = new Date();
-    cycleStartMillis = millis(); // 사이클 타이머 시작
-    if (emailLinkEl) emailLinkEl.style('display', 'none');
+    cycleStartMillis = millis(); // 사이클 타이머 시작 — 캔버스 전환보다 먼저 (메뉴에 오래 있다 시작해도 첫 문장은 60초 뒤)
+    applyCanvasLayout(false);   // 메뉴용 화면 전체 캔버스 → 작품 비율(2.5:1) 캔버스로
     if (copyrightEl) copyrightEl.style('display', 'none');
-    if (portraitHintEl) portraitHintEl.style('display', 'none');
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
     if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) fullscreen(true);
 }
@@ -574,17 +595,63 @@ function startDecoderWhenRunning() {
     c.addEventListener('statechange', onState);
 }
 
+let fadeTimer = null, fadePending = false, fadeFallbackTimer = null;
+// 스트림 소리가 실제로 나오기 시작함 → (시작 직후 한 번만) 페이드인
+function onStreamPlaying() {
+    if (!started || !fadePending) return;
+    fadePending = false;
+    clearTimeout(fadeFallbackTimer);
+    bootLog('stream playing → fade in');
+    fadeInAudio(START_FADE_IN_MS);
+}
+
 function fadeInAudio(durationMillis = 3000) {
     if (!gainOut) return;
+    if (fadeTimer) clearInterval(fadeTimer);
     let steps = 30;
     let stepTime = durationMillis / steps;
     let currentStep = 0;
-    let fadeInterval = setInterval(() => {
+    fadeTimer = setInterval(() => {
         currentStep++;
         let vol = currentStep / steps;
         gainOut.gain.value = constrain(vol, 0, 1);
-        if (currentStep >= steps) clearInterval(fadeInterval);
+        if (currentStep >= steps) { clearInterval(fadeTimer); fadeTimer = null; }
     }, stepTime);
+}
+
+// 작품 → 메뉴로 돌아가기 (× 버튼). 소리 멈추고 상태 초기화, 메뉴 화면(화면 전체 캔버스)으로
+function returnToMenu() {
+    bootLog('returnToMenu');
+    started = false;
+    fadePending = false; clearTimeout(fadeFallbackTimer);
+    if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
+    if (gainOut) gainOut.gain.value = 0;
+    if (streamDecoder) streamDecoder.stop();
+    if (audio) { audio.pause(); audio.src = `${AUDIO_URL}?t=${Date.now()}`; }   // 다음 시작 땐 새로 받음
+    hideControls(true);
+    resetScene();
+    if (fullscreen()) fullscreen(false);
+    applyCanvasLayout(false);
+    if (copyrightEl) { copyrightEl.style('display', 'flex'); copyrightEl.elt.dataset.key = ''; }
+}
+
+// × 버튼: 작품 중 화면을 탭하거나(모바일) 마우스를 움직이면(데스크톱) 3초 동안 보임
+let controlsVisible = false, controlsTimer = null;
+function showControls() {
+    if (!started || !exitBtnEl) return;
+    controlsVisible = true;
+    exitBtnEl.style('display', 'block');
+    clearTimeout(controlsTimer);
+    controlsTimer = setTimeout(() => hideControls(), 3000);
+}
+function hideControls() {
+    controlsVisible = false;
+    clearTimeout(controlsTimer);
+    if (exitBtnEl) exitBtnEl.style('display', 'none');
+}
+
+function mouseMoved() {
+    if (started && !isTouchDevice) showControls();
 }
 
 function resetScene() {
@@ -657,7 +724,7 @@ function draw() {
     updateDebug();
     if (!assetsReady) { background(BG_COLOR); return; }   // 텍스트·폰트 준비 전에는 검은 화면
     // 풀스크린일 때 커서 숨김, 아니면 표시
-    if (fullscreen()) noCursor();
+    if (fullscreen() && !controlsVisible) noCursor();
     else cursor(ARROW);
 
     if (!started) {
@@ -711,102 +778,134 @@ function draw() {
 
 function drawStartScreen() {
     background(BG_COLOR);
-    // 작은 화면: 중심 기준으로 SS 만큼 축소 (넓은 화면은 SS=1 → 기존과 동일)
-    push();
-    translate(width / 2 * (1 - SS), height / 2 * (1 - SS));
-    scale(SS);
-    fill(255);
-    textAlign(CENTER, CENTER);
-    strokeWeight(0.1);
-
-    textFont(englishFont);
-    textSize(30);
-    text("Some-bodies are listening, too", width / 2, height / 2 - 220);
-
-    textFont(koreanFont);
-    textSize(28);
-    text("누군가 듣고 있어", width / 2, height / 2 - 160);
-
-    // [아이콘 테스트용 — 필요시 주석 해제]
-    // const _iconTypes = ['clear', 'cloudy', 'rain', 'snow', 'fog', 'thunder'];
-    // const _testIcon = _iconTypes[Math.floor(millis() / 5000) % _iconTypes.length];
-    // drawWeatherIcon(width / 2, height / 2 - 98, _testIcon);
-
-    // textFont(englishFont2);
-    // textSize(20);
-    // text("Jiyeon Kim, Gangil Yi", width / 2, height / 2 - 150);
-
-    textFont(englishFont2);
-    textSize(25);
-    noStroke();
-    fill(255);
+    // 메뉴 화면은 화면 전체 캔버스에 흐름 배치(위→아래)로 그린다.
+    // 기본 크기는 넓은 데스크톱 기준(START_BASE), 화면이 작으면 k로 줄이되 글씨마다 최소 크기를 지킨다.
+    // 제목·날짜는 폭에 맞춰 줄이고, 아래 안내 문장은 줄바꿈한다.
+    const W = width, H = height, maxW = W * 0.9;
+    const B = START_BASE;
+    const k = Math.min(1, H / B.designH, W / B.designW);
+    const sz = (base, min) => Math.max(min, base * k);
     const weatherSuffix = weatherIconType
         ? '  ·  ' + weatherIconType[0].toUpperCase() + weatherIconType.slice(1)
         : '  ·  ' + '- - - - -'; // 데이터 대기 중: 대시 placeholder (도착하면 날씨 이름으로 교체)
-    text(getFormattedKoreanTime() + weatherSuffix, width / 2, height / 2 + 40);
 
-    // --- Live (텍스트, 버튼 아님) ---
-    textFont(englishFont2);
-    textSize(24);
-    noStroke();
-    fill(255);
-    // text("Live", width / 2, height / 2 + 110);
+    // 한 줄에 맞추기(줄이기) / 줄바꿈
+    const fitSize = (str, font, size) => {
+        textFont(font); textSize(size);
+        const w = textWidth(str);
+        return w > maxW ? size * maxW / w : size;
+    };
+    const wrap = (str, font, size) => {
+        textFont(font); textSize(size);
+        if (textWidth(str) <= maxW) return [str];
+        const words = str.split(' '), lines = [];
+        let cur = '';
+        for (const wd of words) {
+            const t = cur ? cur + ' ' + wd : wd;
+            if (textWidth(t) > maxW && cur) { lines.push(cur); cur = wd; } else cur = t;
+        }
+        if (cur) lines.push(cur);
+        return lines;
+    };
 
-    // --- 설명 라인 ---
-    textSize(14);
-    // text("Select language", width / 2, height / 2 + 145);
+    // 배치 항목 만들기
+    const items = [];
+    const addLine = (str, font, size, opts = {}) => items.push({ type: 'text', str, font, size, ...opts });
+    const gap = (g) => items.push({ type: 'gap', g });
+    const enT = "Some-bodies are listening, too", koT = "누군가 듣고 있어";
+    const dateT = getFormattedKoreanTime() + weatherSuffix;
+    addLine(enT, englishFont, fitSize(enT, englishFont, sz(B.title, 22)));
+    gap(B.gapTitle);
+    addLine(koT, koreanFont, fitSize(koT, koreanFont, sz(B.titleKo, 20)));
+    gap(B.gapAfterTitles);
+    addLine(dateT, englishFont2, fitSize(dateT, englishFont2, sz(B.date, 14)));
+    gap(B.gapBeforeButtons);
+    const btnH = Math.max(42, B.btnH * k), btnW = Math.max(104, B.btnW * k), btnGap = Math.max(14, 18 * k);
+    items.push({ type: 'buttons', h: btnH });
+    // 높이가 낮은 화면(폰 가로 등)에서는 저작권 줄을 버튼 아래 흐름에 넣어 겹치지 않게 (아니면 화면 맨 아래 가운데)
+    const copyInFlow = H < 520;
+    const copyPx = Math.max(11, 16 * k);
+    if (copyInFlow) gap(B.gapAfterButtons);
+    const copyH = copyInFlow ? copyPx * 1.8 : 0;
 
-    // --- ENG / KOR 버튼 (설명 아래) ---
-    let langY = height / 2 + 170;
-    let btnW = 90, btnH = 34, gap = 14;
-    let totalW = btnW * 2 + gap;
-    let leftX = width / 2 - totalW / 2;
+    // 높이 계산: 글씨 높이는 고정, 넘치면 간격부터 줄임
+    const textH = items.reduce((a, it) => a + (it.type === 'text' ? it.size * 1.3 : it.type === 'buttons' ? it.h : 0), 0);
+    const gapsBase = items.reduce((a, it) => a + (it.type === 'gap' ? it.g : 0), 0);
+    const avail = H * 0.94 - copyH;
+    const gk = Math.max(0.15, Math.min(k, (avail - textH) / gapsBase));
+    const total = textH + gapsBase * gk + copyH;
+    // 모바일(터치 기기): 아래쪽 브라우저 도구 막대 등에 가리지 않게 전체를 글자 두 줄 정도 위로
+    const mobileLift = isTouchDevice ? copyPx * 1.6 * 2 : 0;
+    let y = Math.max(4, (H - total) / 2 - mobileLift);
 
-    ui.eng = { x: leftX, y: langY - 80, w: btnW, h: btnH };
-    ui.kor = { x: leftX + btnW + gap, y: langY - 80, w: btnW, h: btnH };
+    // 그리기
+    textAlign(CENTER, CENTER);
+    for (const it of items) {
+        if (it.type === 'gap') { y += it.g * gk; continue; }
+        if (it.type === 'text') {
+            const h = it.size * 1.3;
+            noStroke(); fill(255);
+            strokeWeight(it.note ? 0.3 : 0.1);
+            textFont(it.font); textSize(it.size);
+            text(it.str, W / 2, y + h / 2);
+            y += h;
+            continue;
+        }
+        // ENG / KOR 버튼
+        // eng  /  kor — 제목과 같은 세리프(Times)로, 가운데 흐린 '/'. 누를 수 있는 영역은 각 단어 둘레로 넉넉히
+        const btnText = Math.max(20, B.btnText * k);
+        textFont(englishFont); textSize(btnText);
+        const sepGap = btnText * 1.1;                  // 단어와 '/' 사이 간격
+        const engW = textWidth('eng'), korW = textWidth('kor'), slashW = textWidth('/');
+        const cy = y + btnH / 2 - btnText * 0.1;
+        const engCx = W / 2 - slashW / 2 - sepGap - engW / 2;
+        const korCx = W / 2 + slashW / 2 + sepGap + korW / 2;
+        // 누를 수 있는 영역: 단어 바깥쪽으로 넉넉히, 안쪽은 가운데 '/'에서 끊어 두 영역이 겹치지 않게
+        const pad = Math.max(btnW * 0.4, engW / 2 + btnText * 0.8);
+        ui.eng = { x: engCx - pad, y, w: (W / 2 - 1) - (engCx - pad), h: btnH };
+        ui.kor = { x: W / 2 + 1, y, w: (korCx + pad) - (W / 2 + 1), h: btnH };
+        // 기본은 흰색 75% (얇은 글꼴들 사이에서 너무 진해 보이지 않게), 마우스를 올리면 100% + 밑줄
+        const overEng = !isTouchDevice && hit(mouseX, mouseY, ui.eng);
+        const overKor = !isTouchDevice && hit(mouseX, mouseY, ui.kor);
+        const uy = cy + btnText * 0.55;
+        noStroke();
+        fill(255, overEng ? 255 : 190); text('eng', engCx, cy);
+        fill(255, overKor ? 255 : 190); text('kor', korCx, cy);
+        fill(255, 100); text('/', W / 2, cy);
+        stroke(255); strokeWeight(1);
+        if (overEng) line(engCx - engW / 2, uy, engCx + engW / 2, uy);
+        if (overKor) line(korCx - korW / 2, uy, korCx + korW / 2, uy);
+        noStroke();
+        y += btnH;
+    }
 
-    // ENG (항상 비어있는 버튼, 선택 시 테두리 두께만 변경)
-    noFill();
-    stroke(255);
-    strokeWeight(lang === "ENG" ? 1.5 : 1.5);
-    rect(ui.eng.x, ui.eng.y, ui.eng.w, ui.eng.h, 16);
-
-    noStroke();
-    fill(255);
-    textFont(englishFont2);
-    textSize(16);
-    text("ENG", ui.eng.x + ui.eng.w / 2, ui.eng.y + ui.eng.h / 2 - 3);
-
-    // KOR (항상 비어있는 버튼, 선택 시 테두리 두께만 변경)
-    noFill();
-    stroke(255);
-    strokeWeight(lang === "KOR" ? 1.5 : 1.5);
-    rect(ui.kor.x, ui.kor.y, ui.kor.w, ui.kor.h, 16);
-
-    noStroke();
-    fill(255);
-    text("KOR", ui.kor.x + ui.kor.w / 2, ui.kor.y + ui.kor.h / 2 - 3);
+    if (copyrightEl) {
+        const key = copyInFlow + '/' + Math.round(y) + '/' + copyPx + '/' + mobileLift;
+        if (copyrightEl.elt.dataset.key !== key) {
+            copyrightEl.elt.dataset.key = key;
+            copyrightEl.style('font-size', copyPx + 'px');
+            if (copyInFlow) {   // 이메일 아래 가운데
+                copyrightEl.style('left', '50%');
+                copyrightEl.style('transform', 'translateX(-50%)');
+                copyrightEl.style('bottom', 'auto');
+                copyrightEl.style('top', Math.round(y) + 'px');
+                copyrightEl.style('white-space', 'nowrap');
+            } else {            // 아래 가운데 (모바일은 두 줄 정도 더 위)
+                const m = Math.min(20, Math.max(8, W * 0.02)) + mobileLift;
+                copyrightEl.style('left', '50%');
+                copyrightEl.style('transform', 'translateX(-50%)');
+                copyrightEl.style('top', 'auto');
+                copyrightEl.style('bottom', m + 'px');
+                copyrightEl.style('white-space', 'nowrap');
+            }
+        }
+    }
 
     // 커서 처리(풀스크린 아닐 때만)
     if (!fullscreen()) {
-        const sp = toStartCoords(mouseX, mouseY);
-        let overEng = hit(sp.x, sp.y, ui.eng);
-        let overKor = hit(sp.x, sp.y, ui.kor);
-        if (overEng || overKor) cursor(HAND);
+        if (hit(mouseX, mouseY, ui.eng) || hit(mouseX, mouseY, ui.kor)) cursor(HAND);
         else cursor(ARROW);
     }
-
-    strokeWeight(0.3);
-    fill(255);
-    textSize(18);
-    text("* Works on desktop and mobile browsers. On a phone, landscape view is recommended", width / 2, height / 2 + 216);
-    textSize(16);
-    text("* 데스크톱과 모바일 브라우저에서 볼 수 있습니다. 휴대폰은 가로 화면을 권장합니다.", width / 2, height / 2 + 240);
-    textSize(18);
-    text("** For the intended layout and subtitle scale, please view at default browser zoom (100%)", width / 2, height / 2 + 268);
-    textSize(16);
-    text("** 의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", width / 2, height / 2 + 292);
-    pop();
 }
 
 
