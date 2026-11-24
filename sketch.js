@@ -120,6 +120,7 @@ let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 
 let weatherTempC = null;
 
 let copyrightEl;
+let exitBtnEl;   // 작품 중 메뉴로 돌아가는 × 버튼
 
 
 let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
@@ -274,6 +275,25 @@ function setup() {
         '<rect x="3" y="5.5" width="18" height="13" rx="1.2"/><path d="M3.6 6.4 12 12.8l8.4-6.4"/></svg></a>');
     copyrightEl.style('display', 'flex');
     copyrightEl.style('align-items', 'center');
+
+    exitBtnEl = createElement('button',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
+        '<path d="M6 6l12 12M18 6 6 18"/></svg>');
+    exitBtnEl.attribute('aria-label', 'Back to menu');
+    exitBtnEl.attribute('title', 'Back to menu');
+    exitBtnEl.style('position', 'fixed');
+    exitBtnEl.style('top', 'calc(env(safe-area-inset-top, 0px) + 10px)');
+    exitBtnEl.style('right', 'calc(env(safe-area-inset-right, 0px) + 10px)');
+    exitBtnEl.style('padding', '12px');
+    exitBtnEl.style('background', 'rgba(0,0,0,0.35)');
+    exitBtnEl.style('border', 'none');
+    exitBtnEl.style('border-radius', '50%');
+    exitBtnEl.style('color', 'rgba(255,255,255,0.85)');
+    exitBtnEl.style('line-height', '0');
+    exitBtnEl.style('cursor', 'pointer');
+    exitBtnEl.style('z-index', '30');
+    exitBtnEl.style('display', 'none');
+    exitBtnEl.elt.addEventListener('click', (ev) => { ev.stopPropagation(); returnToMenu(); });
     copyrightEl.style('position', 'fixed');
     copyrightEl.style('left', '20px');
     copyrightEl.style('bottom', '20px');
@@ -303,9 +323,11 @@ function setupMediaElementAudio(context) {
     let reconnectTimer = null;
 
     const scheduleReconnect = () => {
+        if (!started) return;       // 메뉴로 돌아간 상태면 재연결 안 함
         if (reconnectTimer) return; // 이미 예약돼 있으면 무시
         reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
+            if (!started) return;
             audio.src = `${AUDIO_URL}?t=${Date.now()}`;
             audio.play()
                 .then(() => { reconnectDelay = RECONNECT_BASE_MS; }) // 성공 시 지연 리셋
@@ -507,6 +529,8 @@ function mousePressed() {
         return;
     }
 
+    // 시작 후: 탭하면 × (메뉴로) 버튼 보이기
+    showControls();
     // 시작 후: 오디오가 멈춰 있으면(iOS 전화·알림·세션 끊김 등) 탭으로 다시 깨움
     if (getAudioContext().state !== 'running') {
         getAudioContext().resume().then(() => bootLog('tap resume → ' + getAudioContext().state));
@@ -515,7 +539,7 @@ function mousePressed() {
 
 function touchStarted(e) {
     // 링크(저작권 옆 편지봉투 등)를 누른 터치는 막지 않는다 — false를 돌려주면 브라우저가 링크로 처리하지 못함
-    if (e && e.target && e.target.closest && e.target.closest('a')) return true;
+    if (e && e.target && e.target.closest && e.target.closest('a, button')) return true;
     mousePressed();
     return false;
 }
@@ -556,17 +580,53 @@ function startDecoderWhenRunning() {
     c.addEventListener('statechange', onState);
 }
 
+let fadeTimer = null;
 function fadeInAudio(durationMillis = 3000) {
     if (!gainOut) return;
+    if (fadeTimer) clearInterval(fadeTimer);
     let steps = 30;
     let stepTime = durationMillis / steps;
     let currentStep = 0;
-    let fadeInterval = setInterval(() => {
+    fadeTimer = setInterval(() => {
         currentStep++;
         let vol = currentStep / steps;
         gainOut.gain.value = constrain(vol, 0, 1);
-        if (currentStep >= steps) clearInterval(fadeInterval);
+        if (currentStep >= steps) { clearInterval(fadeTimer); fadeTimer = null; }
     }, stepTime);
+}
+
+// 작품 → 메뉴로 돌아가기 (× 버튼). 소리 멈추고 상태 초기화, 메뉴 화면(화면 전체 캔버스)으로
+function returnToMenu() {
+    bootLog('returnToMenu');
+    started = false;
+    if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
+    if (gainOut) gainOut.gain.value = 0;
+    if (streamDecoder) streamDecoder.stop();
+    if (audio) { audio.pause(); audio.src = `${AUDIO_URL}?t=${Date.now()}`; }   // 다음 시작 땐 새로 받음
+    hideControls(true);
+    resetScene();
+    if (fullscreen()) fullscreen(false);
+    applyCanvasLayout(false);
+    if (copyrightEl) { copyrightEl.style('display', 'flex'); copyrightEl.elt.dataset.key = ''; }
+}
+
+// × 버튼: 작품 중 화면을 탭하거나(모바일) 마우스를 움직이면(데스크톱) 3초 동안 보임
+let controlsVisible = false, controlsTimer = null;
+function showControls() {
+    if (!started || !exitBtnEl) return;
+    controlsVisible = true;
+    exitBtnEl.style('display', 'block');
+    clearTimeout(controlsTimer);
+    controlsTimer = setTimeout(() => hideControls(), 3000);
+}
+function hideControls() {
+    controlsVisible = false;
+    clearTimeout(controlsTimer);
+    if (exitBtnEl) exitBtnEl.style('display', 'none');
+}
+
+function mouseMoved() {
+    if (started && !isTouchDevice) showControls();
 }
 
 function resetScene() {
@@ -639,7 +699,7 @@ function draw() {
     updateDebug();
     if (!assetsReady) { background(BG_COLOR); return; }   // 텍스트·폰트 준비 전에는 검은 화면
     // 풀스크린일 때 커서 숨김, 아니면 표시
-    if (fullscreen()) noCursor();
+    if (fullscreen() && !controlsVisible) noCursor();
     else cursor(ARROW);
 
     if (!started) {
