@@ -787,8 +787,7 @@ function drawStartScreen() {
             const label = showNotice ? 'Notice  –' : 'Notice  +';   // 폰트에 있는 글자만 (▴▾는 없어서 네모로 보임)
             const nw = textWidth(label) + noticeH;
             ui.notice = { x: W / 2 - nw / 2, y, w: nw, h: noticeH };
-            noFill(); stroke(255, 160); strokeWeight(1);
-            rect(ui.notice.x, ui.notice.y, nw, noticeH, noticeH / 2);
+            // 테두리 없이 글자만 (누를 수 있는 영역은 글자 주변 여유 포함)
             noStroke(); fill(255, 200);
             text(label, W / 2, y + noticeH / 2 - noticeText * 0.12);
             y += noticeH;
