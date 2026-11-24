@@ -54,8 +54,7 @@ let DESIGN_W = 1280;                  // 캔버스가 이보다 좁으면 이 �
 let START_BASE = {
     designW: 900, designH: 760,
     title: 40, titleKo: 36, date: 28, btnW: 120, btnH: 48, btnText: 20, note: 19, noteKo: 17, email: 19,
-    gapTitle: 14, gapAfterTitles: 110, gapBeforeButtons: 34, gapAfterButtons: 40, gapAfterNotice: 20, gapNotes: 14,
-    noticeText: 17, noticeH: 36,
+    gapTitle: 14, gapAfterTitles: 110, gapBeforeButtons: 34, gapAfterButtons: 40,
 };
 
 // ■ 폰트/텍스트 리소스
@@ -120,14 +119,10 @@ let canvasTop = 0;            // 캔버스 위쪽 위치(px) — 자막 위치 �
 let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 'thunder'
 let weatherTempC = null;
 
-let emailLinkEl;
 let copyrightEl;
 
 
-let showNotice = false;   // 메뉴 화면 안내 문장(* / **) 펼침 여부 — Notice 버튼으로 토글
-
 let ui = {
-    notice: null,
     kor: null,
     eng: null
     // langLabel: null // (optional, add if you want to reference a label area)
@@ -268,18 +263,15 @@ function setup() {
     subtitleEl.style('pointer-events', 'none');
     if (!SHOW_SUBTITLE) subtitleEl.style('display', 'none');
 
-    emailLinkEl = createA('mailto:weatherreport.live@gmail.com', 'weatherreport.live@gmail.com');
-    emailLinkEl.style('position', 'fixed');
-    emailLinkEl.style('left', '50%');
-    emailLinkEl.style('top', 'calc(50% + 290px)');
-    emailLinkEl.style('transform', 'translate(-50%, -50%)');
-    emailLinkEl.style('color', 'white');
-    emailLinkEl.style('font-family', "'NotoSansKR-Thin', 'Times New Roman', serif");
-    emailLinkEl.style('font-size', '18px');
-    emailLinkEl.style('text-decoration', 'underline');
-    emailLinkEl.style('z-index', '10');
-
-    copyrightEl = createElement('div', '© 2025 - 2026 Weather Report (Jiyeon Kim, Gangil Yi)');
+    // 저작권 줄 + 오른쪽에 편지봉투 아이콘(메일 보내기 링크)
+    copyrightEl = createElement('div',
+        '<span>© 2025 - 2026 Weather Report (Jiyeon Kim, Gangil Yi)</span>' +
+        '<a href="mailto:weatherreport.live@gmail.com" aria-label="Email weatherreport.live@gmail.com" title="weatherreport.live@gmail.com"' +
+        ' style="pointer-events:auto;color:inherit;display:inline-flex;align-items:center;margin-left:0.55em;padding:0.35em;margin-top:-0.35em;margin-bottom:-0.35em;vertical-align:middle">' +
+        '<svg width="1.25em" height="1.25em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">' +
+        '<rect x="3" y="5.5" width="18" height="13" rx="1.2"/><path d="M3.6 6.4 12 12.8l8.4-6.4"/></svg></a>');
+    copyrightEl.style('display', 'flex');
+    copyrightEl.style('align-items', 'center');
     copyrightEl.style('position', 'fixed');
     copyrightEl.style('left', '20px');
     copyrightEl.style('bottom', '20px');
@@ -493,11 +485,6 @@ function mousePressed() {
 
         // ENG
         const sp = toStartCoords(mouseX, mouseY);
-        // Notice: 안내 문장 펼치기/접기
-        if (ui.notice && hit(sp.x, sp.y, ui.notice)) {
-            showNotice = !showNotice;
-            return;
-        }
         if (hit(sp.x, sp.y, ui.eng)) {
             lang = "ENG";
             sentences = sentencesENG;
@@ -546,7 +533,6 @@ function startAudio() {
     startTime = new Date();
     cycleStartMillis = millis(); // 사이클 타이머 시작 — 캔버스 전환보다 먼저 (메뉴에 오래 있다 시작해도 첫 문장은 60초 뒤)
     applyCanvasLayout(false);   // 메뉴용 화면 전체 캔버스 → 작품 비율(2.5:1) 캔버스로
-    if (emailLinkEl) emailLinkEl.style('display', 'none');
     if (copyrightEl) copyrightEl.style('display', 'none');
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
     if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) fullscreen(true);
@@ -747,50 +733,24 @@ function drawStartScreen() {
     gap(B.gapBeforeButtons);
     const btnH = Math.max(42, B.btnH * k), btnW = Math.max(104, B.btnW * k), btnGap = Math.max(14, 18 * k);
     items.push({ type: 'buttons', h: btnH });
-    gap(B.gapAfterButtons);
-    const noticeH = Math.max(32, B.noticeH * k), noticeText = Math.max(15, B.noticeText * k);
-    items.push({ type: 'notice', h: noticeH });
-    items.push({ type: 'gap', g: B.gapAfterNotice, note: true });
-    const notes = [
-        ["For the intended layout and subtitle scale, please view at default browser zoom (100%)", B.note, 12],
-        ["의도한 레이아웃과 자막 크기로 보려면 브라우저 확대/축소를 기본값(100%)으로 해 주세요.", B.noteKo, 11.5],
-    ];
-    for (const n of notes) {
-        if (!n) { items.push({ type: 'gap', g: B.gapNotes, note: true }); continue; }
-        const size = sz(n[1], n[2]);
-        for (const l of wrap(n[0], englishFont2, size)) addLine(l, englishFont2, size, { note: true });
-    }
-
-    // 높이 계산: 글씨 높이는 고정, 넘치면 간격부터 줄임
-    // 높이가 낮은 화면(폰 가로 등)에서는 저작권 표시를 이메일 아래 가운데로 옮겨 겹치지 않게
+    // 높이가 낮은 화면(폰 가로 등)에서는 저작권 줄을 버튼 아래 흐름에 넣어 겹치지 않게 (아니면 화면 맨 아래 가운데)
     const copyInFlow = H < 520;
     const copyPx = Math.max(11, 16 * k);
-    const emailH = Math.max(14, B.email * k) * 1.6 + (copyInFlow ? copyPx * 1.5 : 0);
-    const textH = items.reduce((a, it) => a + (it.type === 'text' ? it.size * 1.3 : (it.type === 'buttons' || it.type === 'notice') ? it.h : 0), 0);
+    if (copyInFlow) gap(B.gapAfterButtons);
+    const copyH = copyInFlow ? copyPx * 1.8 : 0;
+
+    // 높이 계산: 글씨 높이는 고정, 넘치면 간격부터 줄임
+    const textH = items.reduce((a, it) => a + (it.type === 'text' ? it.size * 1.3 : it.type === 'buttons' ? it.h : 0), 0);
     const gapsBase = items.reduce((a, it) => a + (it.type === 'gap' ? it.g : 0), 0);
-    const avail = H * 0.94 - emailH;
+    const avail = H * 0.94 - copyH;
     const gk = Math.max(0.15, Math.min(k, (avail - textH) / gapsBase));
-    const total = textH + gapsBase * gk + emailH;
-    // 위치는 안내 문장을 펼친 상태 기준으로 잡는다 → Notice를 눌러도 제목·버튼이 움직이지 않음
+    const total = textH + gapsBase * gk + copyH;
     let y = Math.max(4, (H - total) / 2);
 
     // 그리기
     textAlign(CENTER, CENTER);
     for (const it of items) {
-        if (it.note && !showNotice) continue;   // 접힌 안내 문장은 건너뜀 (이메일이 Notice 바로 아래로)
         if (it.type === 'gap') { y += it.g * gk; continue; }
-        if (it.type === 'notice') {
-            textFont(englishFont2); textSize(noticeText);
-            const label = showNotice ? '\u2013' : '+';   // 펼침 –, 접힘 + (폰트에 있는 글자)
-            const tw = textWidth(label), nw = tw + noticeH;
-            ui.notice = { x: W / 2 - nw / 2, y, w: nw, h: noticeH };
-            // 테두리·밑줄 없이 글자만 (누를 수 있는 영역은 글자 주변 여유 포함)
-            const ty = y + noticeH / 2 - noticeText * 0.12;
-            noStroke(); fill(255, 200);
-            text(label, W / 2, ty);
-            y += noticeH;
-            continue;
-        }
         if (it.type === 'text') {
             const h = it.size * 1.3;
             noStroke(); fill(255);
@@ -814,19 +774,6 @@ function drawStartScreen() {
         y += btnH;
     }
 
-    // 이메일(HTML 링크)은 Notice 안: 펼쳤을 때만 안내 문장 바로 아래에 보임. 저작권은 왼쪽 아래
-    const emailPx = Math.max(14, B.email * k);
-    const emailTop = Math.round(y + emailPx * 0.8);
-    if (emailLinkEl) {
-        const key = showNotice + '/' + emailTop + '/' + emailPx;
-        if (emailLinkEl.elt.dataset.top !== key) {
-            emailLinkEl.elt.dataset.top = key;
-            emailLinkEl.style('display', showNotice ? 'block' : 'none');
-            emailLinkEl.style('top', emailTop + 'px');
-            emailLinkEl.style('font-size', emailPx + 'px');
-        }
-    }
-    if (showNotice) y += emailPx * 1.6;   // 이메일 줄만큼 내려서 그 아래에 저작권(낮은 화면)
     if (copyrightEl) {
         const key = copyInFlow + '/' + Math.round(y) + '/' + copyPx;
         if (copyrightEl.elt.dataset.key !== key) {
@@ -836,7 +783,7 @@ function drawStartScreen() {
                 copyrightEl.style('left', '50%');
                 copyrightEl.style('transform', 'translateX(-50%)');
                 copyrightEl.style('bottom', 'auto');
-                copyrightEl.style('top', Math.round(y + copyPx * 0.3) + 'px');
+                copyrightEl.style('top', Math.round(y) + 'px');
                 copyrightEl.style('white-space', 'nowrap');
             } else {            // 아래 가운데
                 const m = Math.min(20, Math.max(8, W * 0.02));
@@ -851,7 +798,7 @@ function drawStartScreen() {
 
     // 커서 처리(풀스크린 아닐 때만)
     if (!fullscreen()) {
-        if (hit(mouseX, mouseY, ui.eng) || hit(mouseX, mouseY, ui.kor) || (ui.notice && hit(mouseX, mouseY, ui.notice))) cursor(HAND);
+        if (hit(mouseX, mouseY, ui.eng) || hit(mouseX, mouseY, ui.kor)) cursor(HAND);
         else cursor(ARROW);
     }
 }
