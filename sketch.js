@@ -123,7 +123,14 @@ let copyrightEl;
 let exitBtnEl;
 let fullscreenPending = false;
 let fsBtnEl;                 // × 옆 '전체화면 다시 들어가기' 버튼 (전체화면이 아닐 때만)
-let fullscreenBroken = false; // 전체화면 요청이 예외로 실패하는 브라우저(iPad Firefox 등) → 버튼 숨김   // 터치 기기: 시작 탭의 touchend에서 전체화면 요청   // 작품 중 메뉴로 돌아가는 × 버튼
+// 전체화면을 쓸 수 없는 브라우저 → 요청·버튼 생략.
+// iPad Firefox는 requestFullscreen을 자체 JS로 바꿔 '페이지의 <video>를 전체화면'으로 처리함 →
+// 화면 켜 두기용 무음 동영상이 전체화면으로 떠 버림. 내장(native) 함수가 아니면 지원 안 함으로 본다.
+let fullscreenBroken = (() => {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    return !!req && !/\[native code\]/.test(Function.prototype.toString.call(req));
+})();   // 터치 기기: 시작 탭의 touchend에서 전체화면 요청   // 작품 중 메뉴로 돌아가는 × 버튼
 
 
 let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
@@ -608,7 +615,7 @@ function startAudio() {
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
     // 터치 기기(iPad·안드로이드)는 touchstart가 사용자 동작으로 인정되지 않아 거절됨 → 손을 뗄 때(unlockAudio) 한 번 요청
     fullscreenPending = false;
-    if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) {
+    if (document.fullscreenEnabled && !fullscreenBroken && !new URLSearchParams(location.search).has('nofs')) {
         if (isTouchDevice) { fullscreenPending = true; fullscreenTries = 0; }
         else fullscreen(true);
     }
@@ -826,7 +833,7 @@ function updateDebug() {
         st ? 'buf: ' + st.bufferedSec.toFixed(2) + 's  playing: ' + st.playing + '  conn: ' + st.connected + '  under: ' + st.underruns + '  reconn: ' + st.reconnects : '',
         audio ? 'audio t: ' + audio.currentTime.toFixed(1) + ' paused: ' + audio.paused : '',
         'canvas: ' + Math.round(width) + 'x' + Math.round(height) + ' top ' + Math.round(canvasTop) + '  win: ' + windowWidth + 'x' + windowHeight,
-        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + '  fs: ' + !!document.fullscreenElement + '  wake: ' + (wakeLock && !wakeLock.released ? 'lock' : (keepAwakeVideo && !keepAwakeVideo.paused ? 'video' : 'off')) + ('wakeLock' in navigator ? '' : ' (no api)'),
+        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + (fullscreenBroken ? '(shim)' : '') + '  fs: ' + !!document.fullscreenElement + '  wake: ' + (wakeLock && !wakeLock.released ? 'lock' : (keepAwakeVideo && !keepAwakeVideo.paused ? 'video' : 'off')) + ('wakeLock' in navigator ? '' : ' (no api)'),
         debugErrors.slice(-3).join('\n'),
     ].filter(Boolean).join('\n'));
 }
