@@ -120,7 +120,10 @@ let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 
 let weatherTempC = null;
 
 let copyrightEl;
-let exitBtnEl;   // 작품 중 메뉴로 돌아가는 × 버튼
+let exitBtnEl;
+let fullscreenPending = false;
+let fsBtnEl;                 // × 옆 '전체화면 다시 들어가기' 버튼 (전체화면이 아닐 때만)
+let fullscreenBroken = false; // 전체화면 요청이 예외로 실패하는 브라우저(iPad Firefox 등) → 버튼 숨김   // 터치 기기: 시작 탭의 touchend에서 전체화면 요청   // 작품 중 메뉴로 돌아가는 × 버튼
 
 
 let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
@@ -181,9 +184,11 @@ function setup() {
     // iOS: 소리 허용(사용자 활성화)은 touchstart가 아니라 touchend/click 에서만 인정된다.
     // 시작 화면은 touchStarted에서 넘어가지만, 오디오 컨텍스트 재개는 여기서(손을 뗄 때) 한다.
     // 시작 후에도 계속 걸어 두어 전화·알림 등으로 끊긴 오디오를 탭 한 번으로 되살린다.
-    const unlockAudio = () => {
+    const unlockAudio = (ev) => {
         const c = getAudioContext();
         if (c.state !== 'running') c.resume().then(() => bootLog('unlock → ' + c.state));
+        if (started && fullscreenPending) requestFullscreenNow(ev.type);
+        if (started) requestWakeLock();   // 화면 켜 두기도 사용자 동작(touchend/click) 안에서 요청해야 허락됨 (Safari)   // 시작 탭의 손 뗄 때(실패하면 이어지는 click에서 한 번 더)
         if (started && audio && audio.paused) audio.play().catch(() => {});
     };
     document.addEventListener('touchend', unlockAudio, true);
@@ -237,9 +242,9 @@ function setup() {
             audioReady = StreamDecoder.isSupported().then(async (ok) => {
                 bootLog('decoder supported: ' + ok);
                 if (!ok) { setupMediaElementAudio(context); return; } // 구형 브라우저: 기존 방식
-                streamDecoder = new StreamDecoder(context, AUDIO_URL);
+                streamDecoder = new StreamDecoder(context, AUDIO_URL, { forceWasm: new URLSearchParams(location.search).get('decoder') === 'wasm' });
                 await streamDecoder.init();
-                bootLog('decoder ready');
+                bootLog('decoder ready (' + streamDecoder.backend + ')');
                 streamDecoder.onplaying = onStreamPlaying;
                 streamDecoder.output.connect(gainOut);
                 streamDecoder.output.connect(gainFFT);
@@ -279,7 +284,7 @@ function setup() {
 
     exitBtnEl = createElement('button',
         '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
-        '<path d="M6 6l12 12M18 6 6 18"/></svg>');
+        '<path d="M19 12H5M11 6l-6 6 6 6" stroke-linejoin="round"/></svg>');   // ← (Chrome 전체화면의 ×와 구분)
     exitBtnEl.attribute('aria-label', 'Back to menu');
     exitBtnEl.attribute('title', 'Back to menu');
     exitBtnEl.style('position', 'fixed');
@@ -295,6 +300,26 @@ function setup() {
     exitBtnEl.style('z-index', '30');
     exitBtnEl.style('display', 'none');
     exitBtnEl.elt.addEventListener('click', (ev) => { ev.stopPropagation(); returnToMenu(); });
+
+    // 전체화면 다시 들어가기 버튼 (× 왼쪽). 전체화면을 쓸 수 있고 지금 전체화면이 아닐 때만 보임
+    fsBtnEl = createElement('button',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>');
+    fsBtnEl.attribute('aria-label', 'Fullscreen');
+    fsBtnEl.attribute('title', 'Fullscreen');
+    for (const [k, v] of Object.entries({
+        position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 'calc(env(safe-area-inset-right, 0px) + 62px)',
+        padding: '12px', background: 'rgba(0,0,0,0.35)', border: 'none', 'border-radius': '50%',
+        color: 'rgba(255,255,255,0.85)', 'line-height': '0', cursor: 'pointer', 'z-index': '30', display: 'none',
+    })) fsBtnEl.style(k, v);
+    fsBtnEl.elt.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (isTouchDevice) { fullscreenTries = 0; requestFullscreenNow('button'); }
+        else fullscreen(true);
+        hideControls();
+    });
+    document.addEventListener('fullscreenchange', () => { if (controlsVisible) showControls(); });
+    document.addEventListener('webkitfullscreenchange', () => { if (controlsVisible) showControls(); });
     copyrightEl.style('position', 'fixed');
     copyrightEl.style('left', '20px');
     copyrightEl.style('bottom', '20px');
@@ -353,7 +378,7 @@ function setupMediaElementAudio(context) {
 // 직접 디코딩 경로를 쓸지: ?decoder=1 / ?decoder=0 으로 강제 가능, 기본은 WebKit 엔진일 때
 function shouldUseStreamDecoder() {
     const q = new URLSearchParams(location.search).get('decoder');
-    if (q === '1') return true;
+    if (q === '1' || q === 'wasm') return true;
     if (q === '0') return false;
     const ua = navigator.userAgent;
     const isWebKit = /AppleWebKit/.test(ua) && !/Chrome\/|Chromium|Edg\//.test(ua);
@@ -576,9 +601,15 @@ function startAudio() {
     startTime = new Date();
     cycleStartMillis = millis(); // 사이클 타이머 시작 — 캔버스 전환보다 먼저 (메뉴에 오래 있다 시작해도 첫 문장은 60초 뒤)
     applyCanvasLayout(false);   // 메뉴용 화면 전체 캔버스 → 작품 비율(2.5:1) 캔버스로
+    requestWakeLock();          // 보는 동안 화면 켜 두기
     if (copyrightEl) copyrightEl.style('display', 'none');
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
-    if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) fullscreen(true);
+    // 터치 기기(iPad·안드로이드)는 touchstart가 사용자 동작으로 인정되지 않아 거절됨 → 손을 뗄 때(unlockAudio) 한 번 요청
+    fullscreenPending = false;
+    if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) {
+        if (isTouchDevice) { fullscreenPending = true; fullscreenTries = 0; }
+        else fullscreen(true);
+    }
 }
 
 // 디코더는 오디오 컨텍스트가 실제로 running 이 된 뒤에 시작 (iOS에서 resume이 늦게 풀리는 경우 대비)
@@ -619,11 +650,57 @@ function fadeInAudio(durationMillis = 3000) {
     }, stepTime);
 }
 
+// 전체화면 요청 (터치 기기용): 성공하면 pending 해제, 실패하면 이유를 기록하고 다음 기회(click)에 재시도
+let fullscreenTries = 0;
+function requestFullscreenNow(from) {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) { fullscreenPending = false; bootLog('fs: no API'); return; }
+    if (document.fullscreenElement || document.webkitFullscreenElement) { fullscreenPending = false; return; }
+    fullscreenTries++;
+    try {
+        const p = req.call(el);
+        if (p && p.then) {
+            p.then(() => { fullscreenPending = false; bootLog('fs ok (' + from + ')'); })
+             .catch((e) => { bootLog('fs fail (' + from + '): ' + (e && (e.name + ' ' + e.message))); if (fullscreenTries >= 3) fullscreenPending = false; });
+        } else {
+            fullscreenPending = false; bootLog('fs requested (' + from + ', no promise)');
+        }
+    } catch (e) {
+        // 예외(throw)는 재시도해도 같음 — 예: iPad Firefox는 전체화면 요청을 <video> 전용(webkitEnterFullscreen)으로
+        // 바꿔 처리해서 동영상이 없는 이 페이지에서는 항상 실패 → 더 시도하지 않음
+        bootLog('fs throw (' + from + '): ' + e);
+        fullscreenPending = false;
+        fullscreenBroken = true;
+    }
+}
+
+// 화면 켜 두기 (Screen Wake Lock): 작품을 보는 동안 기기가 화면을 어둡게·잠그지 않게.
+// 다른 앱에 갔다 오면 풀리므로 돌아왔을 때 다시 요청. 지원 안 하는 브라우저는 조용히 넘어감.
+let wakeLock = null;
+async function requestWakeLock() {
+    if (!started || !('wakeLock' in navigator)) return;
+    if (wakeLock && !wakeLock.released) return;
+    try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        bootLog('wakeLock on');
+        wakeLock.addEventListener('release', () => bootLog('wakeLock released'));
+    } catch (e) { bootLog('wakeLock fail: ' + (e && e.name)); }
+}
+function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && started) requestWakeLock();
+});
+
 // 작품 → 메뉴로 돌아가기 (× 버튼). 소리 멈추고 상태 초기화, 메뉴 화면(화면 전체 캔버스)으로
 function returnToMenu() {
     bootLog('returnToMenu');
     started = false;
     fadePending = false; clearTimeout(fadeFallbackTimer);
+    fullscreenPending = false;
+    releaseWakeLock();
     if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
     if (gainOut) gainOut.gain.value = 0;
     if (streamDecoder) streamDecoder.stop();
@@ -641,6 +718,12 @@ function showControls() {
     if (!started || !exitBtnEl) return;
     controlsVisible = true;
     exitBtnEl.style('display', 'block');
+    if (fsBtnEl) {
+        const canFs = (document.fullscreenEnabled || document.webkitFullscreenEnabled) && !fullscreenBroken
+            && !new URLSearchParams(location.search).has('nofs');
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        fsBtnEl.style('display', canFs && !isFs ? 'block' : 'none');
+    }
     clearTimeout(controlsTimer);
     controlsTimer = setTimeout(() => hideControls(), 3000);
 }
@@ -648,6 +731,7 @@ function hideControls() {
     controlsVisible = false;
     clearTimeout(controlsTimer);
     if (exitBtnEl) exitBtnEl.style('display', 'none');
+    if (fsBtnEl) fsBtnEl.style('display', 'none');
 }
 
 function mouseMoved() {
@@ -709,12 +793,12 @@ function updateDebug() {
     try { spec = Math.max(...fft.analyze()); } catch (e) {}
     const st = streamDecoder ? streamDecoder.status : null;
     debugEl.html([
-        'path: ' + (streamDecoder ? 'decoder' : audio ? 'element' : 'none') + '  started: ' + started,
+        'path: ' + (streamDecoder ? 'decoder/' + streamDecoder.backend : audio ? 'element' : 'none') + '  started: ' + started,
         'ctx: ' + getAudioContext().state + ' @' + getAudioContext().sampleRate + '  spec: ' + spec,
         st ? 'buf: ' + st.bufferedSec.toFixed(2) + 's  playing: ' + st.playing + '  conn: ' + st.connected + '  under: ' + st.underruns + '  reconn: ' + st.reconnects : '',
         audio ? 'audio t: ' + audio.currentTime.toFixed(1) + ' paused: ' + audio.paused : '',
         'canvas: ' + Math.round(width) + 'x' + Math.round(height) + ' top ' + Math.round(canvasTop) + '  win: ' + windowWidth + 'x' + windowHeight,
-        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext,
+        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + '  fs: ' + !!document.fullscreenElement + '  wake: ' + (('wakeLock' in navigator) ? (wakeLock && !wakeLock.released ? 'on' : 'off') : 'n/a'),
         debugErrors.slice(-3).join('\n'),
     ].filter(Boolean).join('\n'));
 }
