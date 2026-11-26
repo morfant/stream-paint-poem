@@ -237,9 +237,9 @@ function setup() {
             audioReady = StreamDecoder.isSupported().then(async (ok) => {
                 bootLog('decoder supported: ' + ok);
                 if (!ok) { setupMediaElementAudio(context); return; } // 구형 브라우저: 기존 방식
-                streamDecoder = new StreamDecoder(context, AUDIO_URL);
+                streamDecoder = new StreamDecoder(context, AUDIO_URL, { forceWasm: new URLSearchParams(location.search).get('decoder') === 'wasm' });
                 await streamDecoder.init();
-                bootLog('decoder ready');
+                bootLog('decoder ready (' + streamDecoder.backend + ')');
                 streamDecoder.onplaying = onStreamPlaying;
                 streamDecoder.output.connect(gainOut);
                 streamDecoder.output.connect(gainFFT);
@@ -353,7 +353,7 @@ function setupMediaElementAudio(context) {
 // 직접 디코딩 경로를 쓸지: ?decoder=1 / ?decoder=0 으로 강제 가능, 기본은 WebKit 엔진일 때
 function shouldUseStreamDecoder() {
     const q = new URLSearchParams(location.search).get('decoder');
-    if (q === '1') return true;
+    if (q === '1' || q === 'wasm') return true;
     if (q === '0') return false;
     const ua = navigator.userAgent;
     const isWebKit = /AppleWebKit/.test(ua) && !/Chrome\/|Chromium|Edg\//.test(ua);
@@ -709,7 +709,7 @@ function updateDebug() {
     try { spec = Math.max(...fft.analyze()); } catch (e) {}
     const st = streamDecoder ? streamDecoder.status : null;
     debugEl.html([
-        'path: ' + (streamDecoder ? 'decoder' : audio ? 'element' : 'none') + '  started: ' + started,
+        'path: ' + (streamDecoder ? 'decoder/' + streamDecoder.backend : audio ? 'element' : 'none') + '  started: ' + started,
         'ctx: ' + getAudioContext().state + ' @' + getAudioContext().sampleRate + '  spec: ' + spec,
         st ? 'buf: ' + st.bufferedSec.toFixed(2) + 's  playing: ' + st.playing + '  conn: ' + st.connected + '  under: ' + st.underruns + '  reconn: ' + st.reconnects : '',
         audio ? 'audio t: ' + audio.currentTime.toFixed(1) + ' paused: ' + audio.paused : '',

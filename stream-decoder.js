@@ -101,25 +101,52 @@ registerProcessor('stream-decoder-processor', StreamDecoderProcessor);
         return { len, sr, ch: mono ? 1 : 2, samples: v1 ? 1152 : 576 };
     }
 
+    // WebCodecs가 없을 때 쓸 WebAssembly MP3 디코더 (필요할 때만 불러옴)
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const el = document.createElement('script');
+            el.src = src; el.async = true;
+            el.onload = resolve; el.onerror = () => reject(new Error('load fail ' + src));
+            document.head.appendChild(el);
+        });
+    }
+
     class StreamDecoder {
-        static async isSupported() {
-            if (typeof AudioDecoder === 'undefined' || typeof AudioWorkletNode === 'undefined') return false;
+        // 브라우저 내장 MP3 디코더(WebCodecs AudioDecoder) 지원 여부
+        static async hasWebCodecsMp3() {
+            if (typeof AudioDecoder === 'undefined') return false;
             try {
                 const r = await AudioDecoder.isConfigSupported({ codec: 'mp3', sampleRate: 44100, numberOfChannels: 2 });
                 return !!r.supported;
             } catch (e) { return false; }
         }
 
+        // 쓸 수 있는가: AudioWorklet + (WebCodecs 또는 WebAssembly 디코더)
+        static async isSupported() {
+            if (typeof AudioWorkletNode === 'undefined') return false;
+            if (await StreamDecoder.hasWebCodecsMp3()) return true;
+            return typeof WebAssembly === 'object';
+        }
+
         constructor(ctx, url, opts = {}) {
             this.ctx = ctx;
             this.url = url;
-            this.opts = Object.assign({ startSec: 1.5, maxSec: 8, reconnectBaseMs: 1500, reconnectMaxMs: 15000, stallMs: 10000 }, opts);
+            this.opts = Object.assign({ startSec: 1.5, maxSec: 8, reconnectBaseMs: 1500, reconnectMaxMs: 15000, stallMs: 10000,
+                wasmUrl: 'vendor/mpg123-decoder.min.js' }, opts);
             this.output = null;
             this.status = { bufferedSec: 0, playing: false, underruns: 0, connected: false, reconnects: 0 };
             this.running = false;
         }
 
         async init() {
+            // 디코더 선택: 내장(WebCodecs) 우선, 없으면 WebAssembly(mpg123)
+            this.backend = (!this.opts.forceWasm && await StreamDecoder.hasWebCodecsMp3()) ? 'webcodecs' : 'wasm';
+            if (this.backend === 'wasm') {
+                if (!(window['mpg123-decoder'] && window['mpg123-decoder'].MPEGDecoder)) await loadScript(this.opts.wasmUrl);
+                this.wasm = new window['mpg123-decoder'].MPEGDecoder();
+                await this.wasm.ready;
+            }
+            this.status.backend = this.backend;
             const blobUrl = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
             await this.ctx.audioWorklet.addModule(blobUrl);
             URL.revokeObjectURL(blobUrl);
@@ -197,9 +224,24 @@ registerProcessor('stream-decoder-processor', StreamDecoderProcessor);
             }
         }
 
+        // WebAssembly 디코더로 프레임 묶음 디코딩 → 워클릿으로
+        _decodeWasm(frames) {
+            if (!frames.length) return;
+            let n = 0; for (const f of frames) n += f.length;
+            const bytes = new Uint8Array(n);
+            let o = 0; for (const f of frames) { bytes.set(f, o); o += f.length; }
+            const { channelData, samplesDecoded, sampleRate } = this.wasm.decode(bytes);
+            if (!samplesDecoded) return;
+            if (this.ctx.state !== 'running') { this.status.dropped = (this.status.dropped || 0) + 1; return; }
+            const l = channelData[0].slice(0, samplesDecoded);
+            const r = channelData[1] ? channelData[1].slice(0, samplesDecoded) : null;
+            this.node.port.postMessage({ type: 'pcm', sampleRate, l, r }, r ? [l.buffer, r.buffer] : [l.buffer]);
+        }
+
         async _connect() {
             const abort = new AbortController();
             this.abort = abort;
+            if (this.backend === 'wasm') { try { await this.wasm.reset(); } catch (e) {} }   // 새 연결 = 새 스트림
             let pending = new Uint8Array(0);
             let ts = 0;
             let synced = false;
@@ -228,6 +270,7 @@ registerProcessor('stream-decoder-processor', StreamDecoderProcessor);
                     buf.set(pending, 0); buf.set(value, pending.length);
 
                     let i = 0;
+                    const wasmFrames = [];
                     while (i + 4 <= buf.length) {
                         const h = parseHeader(buf, i);
                         if (!h) { i++; synced = false; continue; }
@@ -238,6 +281,11 @@ registerProcessor('stream-decoder-processor', StreamDecoderProcessor);
                             synced = true;
                         }
                         if (i + h.len > buf.length) break;
+                        if (this.backend === 'wasm') {
+                            wasmFrames.push(buf.subarray(i, i + h.len));
+                            i += h.len;
+                            continue;
+                        }
                         if (!this.decoder || this.decoder.state === 'closed' || !this.cfg || this.cfg.sr !== h.sr || this.cfg.ch !== h.ch) {
                             this._makeDecoder(h.sr, h.ch);
                         }
@@ -247,6 +295,7 @@ registerProcessor('stream-decoder-processor', StreamDecoderProcessor);
                         ts += Math.round(h.samples * 1e6 / h.sr);
                         i += h.len;
                     }
+                    if (this.backend === 'wasm') this._decodeWasm(wasmFrames);
                     pending = buf.slice(i);
                 }
                 // 스트림이 끝남(서버가 닫음) → 재연결
