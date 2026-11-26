@@ -120,7 +120,8 @@ let weatherIconType = null;   // 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 
 let weatherTempC = null;
 
 let copyrightEl;
-let exitBtnEl;   // 작품 중 메뉴로 돌아가는 × 버튼
+let exitBtnEl;
+let fullscreenPending = false;   // 터치 기기: 시작 탭의 touchend에서 전체화면 요청   // 작품 중 메뉴로 돌아가는 × 버튼
 
 
 let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
@@ -184,6 +185,10 @@ function setup() {
     const unlockAudio = () => {
         const c = getAudioContext();
         if (c.state !== 'running') c.resume().then(() => bootLog('unlock → ' + c.state));
+        if (started && fullscreenPending) {   // 시작 탭의 손 뗄 때 한 번만 (이후 사용자가 나가면 다시 강제하지 않음)
+            fullscreenPending = false;
+            try { fullscreen(true); } catch (e) {}
+        }
         if (started && audio && audio.paused) audio.play().catch(() => {});
     };
     document.addEventListener('touchend', unlockAudio, true);
@@ -578,7 +583,12 @@ function startAudio() {
     applyCanvasLayout(false);   // 메뉴용 화면 전체 캔버스 → 작품 비율(2.5:1) 캔버스로
     if (copyrightEl) copyrightEl.style('display', 'none');
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
-    if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) fullscreen(true);
+    // 터치 기기(iPad·안드로이드)는 touchstart가 사용자 동작으로 인정되지 않아 거절됨 → 손을 뗄 때(unlockAudio) 한 번 요청
+    fullscreenPending = false;
+    if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) {
+        if (isTouchDevice) fullscreenPending = true;
+        else fullscreen(true);
+    }
 }
 
 // 디코더는 오디오 컨텍스트가 실제로 running 이 된 뒤에 시작 (iOS에서 resume이 늦게 풀리는 경우 대비)
@@ -624,6 +634,7 @@ function returnToMenu() {
     bootLog('returnToMenu');
     started = false;
     fadePending = false; clearTimeout(fadeFallbackTimer);
+    fullscreenPending = false;
     if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
     if (gainOut) gainOut.gain.value = 0;
     if (streamDecoder) streamDecoder.stop();
