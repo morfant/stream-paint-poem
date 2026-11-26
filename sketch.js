@@ -281,19 +281,20 @@ function setup() {
     subtitleEl.style('pointer-events', 'none');
     if (!SHOW_SUBTITLE) subtitleEl.style('display', 'none');
 
-    // 저작권 줄 + 오른쪽에 편지봉투 아이콘(메일 보내기 링크)
+    // 저작권 줄, 그 아래 줄에 아이콘들: 편지봉투(메일) · 공유 모양(홈 화면에 추가 — 휴대폰·태블릿, 홈 화면 앱이 아닐 때만)
+    const SHARE_SVG = '<svg width="1.2em" height="1.2em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M12 3.5v11M8.2 7.2 12 3.5l3.8 3.7"/><path d="M8.5 10.5H6v10h12v-10h-2.5"/></svg>';
+    const ICON_BTN = 'pointer-events:auto;color:inherit;background:none;border:none;display:inline-flex;align-items:center;padding:0.45em;cursor:pointer;font:inherit';
     copyrightEl = createElement('div',
-        '<span>© 2025 - 2026 Weather Report (Jiyeon Kim, Gangil Yi)</span>' +
-        '<a href="mailto:weatherreport.live@gmail.com" aria-label="Email weatherreport.live@gmail.com" title="weatherreport.live@gmail.com"' +
-        ' style="pointer-events:auto;color:inherit;display:inline-flex;align-items:center;margin-left:0.55em;padding:0.35em;margin-top:-0.35em;margin-bottom:-0.35em;vertical-align:middle">' +
-        '<svg width="1.25em" height="1.25em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" style="transform:translateY(0.12em)">' +
+        '<span>© 2025 - 2026 Weather Report</span>' +
+        '<div style="display:flex;justify-content:center;align-items:center;gap:0.4em;margin-top:0.15em">' +
+        '<a href="mailto:weatherreport.live@gmail.com" aria-label="Email weatherreport.live@gmail.com" title="weatherreport.live@gmail.com" style="' + ICON_BTN + '">' +
+        '<svg width="1.25em" height="1.25em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">' +
         '<rect x="3" y="5.5" width="18" height="13" rx="1.2"/><path d="M3.6 6.4 12 12.8l8.4-6.4"/></svg></a>' +
-        // 홈 화면에 추가 (휴대폰·태블릿에서, 아직 홈 화면 앱으로 열지 않았을 때만 보임)
-        '<button class="a2hs" aria-label="Add to Home Screen" title="Add to Home Screen"' +
-        ' style="display:none;pointer-events:auto;color:inherit;background:none;border:none;align-items:center;margin-left:0.25em;padding:0.35em;margin-top:-0.35em;margin-bottom:-0.35em;cursor:pointer;font:inherit">' +
-        '<svg width="1.2em" height="1.2em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="transform:translateY(0.12em)">' +
-        '<rect x="4" y="4" width="16" height="16" rx="3.5"/><path d="M12 8.5v7M8.5 12h7"/></svg></button>');
+        '<button class="a2hs" aria-label="Add to Home Screen" title="Add to Home Screen" style="' + ICON_BTN + ';display:none">' + SHARE_SVG + '</button>' +
+        '</div>');
     copyrightEl.style('display', 'flex');
+    copyrightEl.style('flex-direction', 'column');
     copyrightEl.style('align-items', 'center');
     setupAddToHomeScreen();
 
@@ -763,14 +764,14 @@ function setupAddToHomeScreen() {
 function showA2hsGuide() {
     if (!a2hsOverlayEl) {
         const shareIcon = '<svg width="1.15em" height="1.15em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.2em">' +
-            '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5v10h14V11h-1"/></svg>';
+            '<path d="M12 3.5v11M8.2 7.2 12 3.5l3.8 3.7"/><path d="M8.5 10.5H6v10h12v-10h-2.5"/></svg>';
         const ios = isIOSLike();
         const stepEn = ios
-            ? `Tap the Share button ${shareIcon}, then choose “Add to Home Screen”.`
-            : 'Open the browser menu ⋮, then choose “Add to Home screen” or “Install app”.';
+            ? `Tap ${shareIcon}, then choose “Add to Home Screen”.`
+            : 'Open the ⋮ menu, then choose “Add to Home screen”.';
         const stepKo = ios
-            ? `공유 버튼 ${shareIcon} 을 누른 뒤 ‘홈 화면에 추가’를 고르세요.`
-            : '브라우저 메뉴 ⋮ 에서 ‘홈 화면에 추가’ 또는 ‘앱 설치’를 고르세요.';
+            ? `${shareIcon} 을 누른 뒤 ‘홈 화면에 추가’를 선택하세요.`
+            : '⋮ 메뉴에서 ‘홈 화면에 추가’를 선택하세요.';
         const el = document.createElement('div');
         el.className = 'a2hs-overlay';
         el.setAttribute('role', 'dialog');
@@ -778,8 +779,8 @@ function showA2hsGuide() {
             '<div style="max-width:30em;padding:1.5em;line-height:1.6">' +
             '<div style="font-size:1.15em;margin-bottom:0.8em">Add to Home Screen · 홈 화면에 추가</div>' +
             `<div>${stepEn}</div><div style="margin-bottom:0.8em">${stepKo}</div>` +
-            '<div style="opacity:0.7">Opens full screen, without the browser bar.<br>브라우저 주소창 없이 꽉 찬 화면으로 열립니다.</div>' +
-            '<button style="margin-top:1.4em;padding:0.5em 1.2em;color:inherit;background:none;border:1px solid rgba(255,255,255,0.5);border-radius:2em;font:inherit;cursor:pointer">OK · 확인</button>' +
+            '<div style="opacity:0.7">The work opens full screen, without the address bar.<br>작품이 주소창 없이 전체 화면으로 열립니다.</div>' +
+            '<button style="margin-top:1.4em;padding:0.5em 1.6em;color:inherit;background:none;border:1px solid rgba(255,255,255,0.5);border-radius:2em;font:inherit;cursor:pointer">OK</button>' +
             '</div>';
         Object.assign(el.style, {
             position: 'fixed', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
@@ -1011,7 +1012,7 @@ function drawStartScreen() {
     const copyInFlow = H < 520;
     const copyPx = Math.max(11, 16 * k);
     if (copyInFlow) gap(B.gapAfterButtons);
-    const copyH = copyInFlow ? copyPx * 1.8 : 0;
+    const copyH = copyInFlow ? copyPx * 3.4 : 0;   // 저작권 줄 + 아이콘 줄
 
     // 높이 계산: 글씨 높이는 고정, 넘치면 간격부터 줄임
     const textH = items.reduce((a, it) => a + (it.type === 'text' ? it.size * 1.3 : it.type === 'buttons' ? it.h : 0), 0);
