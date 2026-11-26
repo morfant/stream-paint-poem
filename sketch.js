@@ -287,9 +287,15 @@ function setup() {
         '<a href="mailto:weatherreport.live@gmail.com" aria-label="Email weatherreport.live@gmail.com" title="weatherreport.live@gmail.com"' +
         ' style="pointer-events:auto;color:inherit;display:inline-flex;align-items:center;margin-left:0.55em;padding:0.35em;margin-top:-0.35em;margin-bottom:-0.35em;vertical-align:middle">' +
         '<svg width="1.25em" height="1.25em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" style="transform:translateY(0.12em)">' +
-        '<rect x="3" y="5.5" width="18" height="13" rx="1.2"/><path d="M3.6 6.4 12 12.8l8.4-6.4"/></svg></a>');
+        '<rect x="3" y="5.5" width="18" height="13" rx="1.2"/><path d="M3.6 6.4 12 12.8l8.4-6.4"/></svg></a>' +
+        // 홈 화면에 추가 (휴대폰·태블릿에서, 아직 홈 화면 앱으로 열지 않았을 때만 보임)
+        '<button class="a2hs" aria-label="Add to Home Screen" title="Add to Home Screen"' +
+        ' style="display:none;pointer-events:auto;color:inherit;background:none;border:none;align-items:center;margin-left:0.25em;padding:0.35em;margin-top:-0.35em;margin-bottom:-0.35em;cursor:pointer;font:inherit">' +
+        '<svg width="1.2em" height="1.2em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="transform:translateY(0.12em)">' +
+        '<rect x="4" y="4" width="16" height="16" rx="3.5"/><path d="M12 8.5v7M8.5 12h7"/></svg></button>');
     copyrightEl.style('display', 'flex');
     copyrightEl.style('align-items', 'center');
+    setupAddToHomeScreen();
 
     exitBtnEl = createElement('button',
         '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">' +
@@ -535,6 +541,7 @@ function resetMessageStateOnly() {
 
 function mousePressed() {
     if (!assetsReady) return;   // 메뉴가 아직 안 그려졌으면 무시
+    if (a2hsOpen()) return;     // 홈 화면 추가 안내 창이 열려 있으면 무시
     // 시작 전: 언어 선택 UI 클릭 처리 (선택 즉시 시작)
     if (!started) {
         // 오디오 컨텍스트는 사용자 제스처에서만 resume 가능
@@ -574,7 +581,7 @@ function mousePressed() {
 
 function touchStarted(e) {
     // 링크(저작권 옆 편지봉투 등)를 누른 터치는 막지 않는다 — false를 돌려주면 브라우저가 링크로 처리하지 못함
-    if (e && e.target && e.target.closest && e.target.closest('a, button')) return true;
+    if (e && e.target && e.target.closest && e.target.closest('a, button, .a2hs-overlay')) return true;
     mousePressed();
     return false;
 }
@@ -728,6 +735,65 @@ function releaseWakeLock() {
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && started) requestWakeLock();
 });
+
+// ---- 홈 화면에 추가 ----
+// 아이폰은 웹페이지가 대신 추가할 수 없어(Apple 제한) 방법 안내 창을, 안드로이드 Chrome은 설치 창(beforeinstallprompt)을 띄움
+let installPromptEvent = null;
+let a2hsOverlayEl = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPromptEvent = e; });
+const isIOSLike = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const isStandalone = () => navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches;
+
+function setupAddToHomeScreen() {
+    const btn = copyrightEl.elt.querySelector('button.a2hs');
+    if (!btn) return;
+    if (isTouchDevice && !isStandalone()) btn.style.display = 'inline-flex';
+    btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (installPromptEvent) {   // 안드로이드 Chrome: 바로 설치 창
+            installPromptEvent.prompt();
+            installPromptEvent.userChoice.finally(() => { installPromptEvent = null; });
+            return;
+        }
+        showA2hsGuide();
+    });
+}
+
+function showA2hsGuide() {
+    if (!a2hsOverlayEl) {
+        const shareIcon = '<svg width="1.15em" height="1.15em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.2em">' +
+            '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5v10h14V11h-1"/></svg>';
+        const ios = isIOSLike();
+        const stepEn = ios
+            ? `Tap the Share button ${shareIcon}, then choose “Add to Home Screen”.`
+            : 'Open the browser menu ⋮, then choose “Add to Home screen” or “Install app”.';
+        const stepKo = ios
+            ? `공유 버튼 ${shareIcon} 을 누른 뒤 ‘홈 화면에 추가’를 고르세요.`
+            : '브라우저 메뉴 ⋮ 에서 ‘홈 화면에 추가’ 또는 ‘앱 설치’를 고르세요.';
+        const el = document.createElement('div');
+        el.className = 'a2hs-overlay';
+        el.setAttribute('role', 'dialog');
+        el.innerHTML =
+            '<div style="max-width:30em;padding:1.5em;line-height:1.6">' +
+            '<div style="font-size:1.15em;margin-bottom:0.8em">Add to Home Screen · 홈 화면에 추가</div>' +
+            `<div>${stepEn}</div><div style="margin-bottom:0.8em">${stepKo}</div>` +
+            '<div style="opacity:0.7">Opens full screen, without the browser bar.<br>브라우저 주소창 없이 꽉 찬 화면으로 열립니다.</div>' +
+            '<button style="margin-top:1.4em;padding:0.5em 1.2em;color:inherit;background:none;border:1px solid rgba(255,255,255,0.5);border-radius:2em;font:inherit;cursor:pointer">OK · 확인</button>' +
+            '</div>';
+        Object.assign(el.style, {
+            position: 'fixed', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
+            background: 'rgba(0,0,0,0.96)', color: 'rgba(255,255,255,0.9)', zIndex: '40',
+            fontFamily: "'NotoSansKR-Thin', 'Times New Roman', serif", fontSize: Math.max(14, Math.min(18, windowWidth / 40)) + 'px',
+        });
+        el.addEventListener('click', (ev) => { ev.stopPropagation(); hideA2hsGuide(); });
+        document.body.appendChild(el);
+        a2hsOverlayEl = el;
+    }
+    a2hsOverlayEl.style.display = 'flex';
+}
+function hideA2hsGuide() { if (a2hsOverlayEl) a2hsOverlayEl.style.display = 'none'; }
+const a2hsOpen = () => !!(a2hsOverlayEl && a2hsOverlayEl.style.display !== 'none');
 
 // 작품 → 메뉴로 돌아가기 (× 버튼). 소리 멈추고 상태 초기화, 메뉴 화면(화면 전체 캔버스)으로
 function returnToMenu() {
