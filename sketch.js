@@ -725,7 +725,7 @@ function updateDebug() {
         st ? 'buf: ' + st.bufferedSec.toFixed(2) + 's  playing: ' + st.playing + '  conn: ' + st.connected + '  under: ' + st.underruns + '  reconn: ' + st.reconnects : '',
         audio ? 'audio t: ' + audio.currentTime.toFixed(1) + ' paused: ' + audio.paused : '',
         'canvas: ' + Math.round(width) + 'x' + Math.round(height) + ' top ' + Math.round(canvasTop) + '  win: ' + windowWidth + 'x' + windowHeight,
-        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext,
+        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + '  fs: ' + !!document.fullscreenElement,
         debugErrors.slice(-3).join('\n'),
     ].filter(Boolean).join('\n'));
 }
