@@ -187,7 +187,8 @@ function setup() {
     const unlockAudio = (ev) => {
         const c = getAudioContext();
         if (c.state !== 'running') c.resume().then(() => bootLog('unlock → ' + c.state));
-        if (started && fullscreenPending) requestFullscreenNow(ev.type);   // 시작 탭의 손 뗄 때(실패하면 이어지는 click에서 한 번 더)
+        if (started && fullscreenPending) requestFullscreenNow(ev.type);
+        if (started) requestWakeLock();   // 화면 켜 두기도 사용자 동작(touchend/click) 안에서 요청해야 허락됨 (Safari)   // 시작 탭의 손 뗄 때(실패하면 이어지는 click에서 한 번 더)
         if (started && audio && audio.paused) audio.play().catch(() => {});
     };
     document.addEventListener('touchend', unlockAudio, true);
@@ -600,6 +601,7 @@ function startAudio() {
     startTime = new Date();
     cycleStartMillis = millis(); // 사이클 타이머 시작 — 캔버스 전환보다 먼저 (메뉴에 오래 있다 시작해도 첫 문장은 60초 뒤)
     applyCanvasLayout(false);   // 메뉴용 화면 전체 캔버스 → 작품 비율(2.5:1) 캔버스로
+    requestWakeLock();          // 보는 동안 화면 켜 두기
     if (copyrightEl) copyrightEl.style('display', 'none');
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
     // 터치 기기(iPad·안드로이드)는 touchstart가 사용자 동작으로 인정되지 않아 거절됨 → 손을 뗄 때(unlockAudio) 한 번 요청
@@ -673,12 +675,32 @@ function requestFullscreenNow(from) {
     }
 }
 
+// 화면 켜 두기 (Screen Wake Lock): 작품을 보는 동안 기기가 화면을 어둡게·잠그지 않게.
+// 다른 앱에 갔다 오면 풀리므로 돌아왔을 때 다시 요청. 지원 안 하는 브라우저는 조용히 넘어감.
+let wakeLock = null;
+async function requestWakeLock() {
+    if (!started || !('wakeLock' in navigator)) return;
+    if (wakeLock && !wakeLock.released) return;
+    try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        bootLog('wakeLock on');
+        wakeLock.addEventListener('release', () => bootLog('wakeLock released'));
+    } catch (e) { bootLog('wakeLock fail: ' + (e && e.name)); }
+}
+function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && started) requestWakeLock();
+});
+
 // 작품 → 메뉴로 돌아가기 (× 버튼). 소리 멈추고 상태 초기화, 메뉴 화면(화면 전체 캔버스)으로
 function returnToMenu() {
     bootLog('returnToMenu');
     started = false;
     fadePending = false; clearTimeout(fadeFallbackTimer);
     fullscreenPending = false;
+    releaseWakeLock();
     if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
     if (gainOut) gainOut.gain.value = 0;
     if (streamDecoder) streamDecoder.stop();
@@ -776,7 +798,7 @@ function updateDebug() {
         st ? 'buf: ' + st.bufferedSec.toFixed(2) + 's  playing: ' + st.playing + '  conn: ' + st.connected + '  under: ' + st.underruns + '  reconn: ' + st.reconnects : '',
         audio ? 'audio t: ' + audio.currentTime.toFixed(1) + ' paused: ' + audio.paused : '',
         'canvas: ' + Math.round(width) + 'x' + Math.round(height) + ' top ' + Math.round(canvasTop) + '  win: ' + windowWidth + 'x' + windowHeight,
-        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + '  fs: ' + !!document.fullscreenElement,
+        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + '  fs: ' + !!document.fullscreenElement + '  wake: ' + (('wakeLock' in navigator) ? (wakeLock && !wakeLock.released ? 'on' : 'off') : 'n/a'),
         debugErrors.slice(-3).join('\n'),
     ].filter(Boolean).join('\n'));
 }
