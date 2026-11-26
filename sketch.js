@@ -678,17 +678,42 @@ function requestFullscreenNow(from) {
 // 화면 켜 두기 (Screen Wake Lock): 작품을 보는 동안 기기가 화면을 어둡게·잠그지 않게.
 // 다른 앱에 갔다 오면 풀리므로 돌아왔을 때 다시 요청. 지원 안 하는 브라우저는 조용히 넘어감.
 let wakeLock = null;
+let keepAwakeVideo = null;   // 대체 방법: 눈에 안 보이는 무음 동영상 반복 재생(iOS는 동영상 재생 중 화면을 끄지 않음)
 async function requestWakeLock() {
-    if (!started || !('wakeLock' in navigator)) return;
+    if (!started) return;
     if (wakeLock && !wakeLock.released) return;
+    if (!('wakeLock' in navigator)) { startKeepAwakeVideo('no api'); return; }   // 예: iPad Chrome·Firefox(앱 안 Safari 엔진)
     try {
         wakeLock = await navigator.wakeLock.request('screen');
         bootLog('wakeLock on');
         wakeLock.addEventListener('release', () => bootLog('wakeLock released'));
-    } catch (e) { bootLog('wakeLock fail: ' + (e && e.name)); }
+        stopKeepAwakeVideo();
+    } catch (e) {
+        bootLog('wakeLock fail: ' + (e && e.name));
+        startKeepAwakeVideo('api fail');
+    }
+}
+function startKeepAwakeVideo(why) {
+    if (!keepAwakeVideo) {
+        const v = document.createElement('video');
+        v.src = 'vendor/keepawake.mp4';   // 16×16 검은 화면 2초, 소리 없음 (1.5KB)
+        v.muted = true; v.loop = true; v.playsInline = true;
+        v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('aria-hidden', 'true');
+        Object.assign(v.style, { position: 'fixed', left: '0', bottom: '0', width: '1px', height: '1px', opacity: '0.01', pointerEvents: 'none', zIndex: '-1' });
+        document.body.appendChild(v);
+        keepAwakeVideo = v;
+    }
+    if (!keepAwakeVideo.paused) return;
+    keepAwakeVideo.play()
+        .then(() => bootLog('keepawake video on (' + why + ')'))
+        .catch((e) => bootLog('keepawake video fail: ' + (e && e.name)));
+}
+function stopKeepAwakeVideo() {
+    if (keepAwakeVideo && !keepAwakeVideo.paused) keepAwakeVideo.pause();
 }
 function releaseWakeLock() {
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    stopKeepAwakeVideo();
 }
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && started) requestWakeLock();
@@ -798,7 +823,7 @@ function updateDebug() {
         st ? 'buf: ' + st.bufferedSec.toFixed(2) + 's  playing: ' + st.playing + '  conn: ' + st.connected + '  under: ' + st.underruns + '  reconn: ' + st.reconnects : '',
         audio ? 'audio t: ' + audio.currentTime.toFixed(1) + ' paused: ' + audio.paused : '',
         'canvas: ' + Math.round(width) + 'x' + Math.round(height) + ' top ' + Math.round(canvasTop) + '  win: ' + windowWidth + 'x' + windowHeight,
-        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + '  fs: ' + !!document.fullscreenElement + '  wake: ' + (('wakeLock' in navigator) ? (wakeLock && !wakeLock.released ? 'on' : 'off') : 'n/a'),
+        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + '  fs: ' + !!document.fullscreenElement + '  wake: ' + (wakeLock && !wakeLock.released ? 'lock' : (keepAwakeVideo && !keepAwakeVideo.paused ? 'video' : 'off')) + ('wakeLock' in navigator ? '' : ' (no api)'),
         debugErrors.slice(-3).join('\n'),
     ].filter(Boolean).join('\n'));
 }
