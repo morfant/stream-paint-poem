@@ -779,7 +779,7 @@ function showA2hsGuide() {
             '<div style="max-width:30em;padding:1.5em;line-height:1.6">' +
             '<div style="font-size:1.15em;margin-bottom:0.8em">Add to Home Screen · 홈 화면에 추가</div>' +
             `<div>${stepEn}</div><div style="margin-bottom:0.8em">${stepKo}</div>` +
-            '<div style="opacity:0.7">The work opens full screen, without the address bar.<br>작품이 주소창 없이 전체 화면으로 열립니다.</div>' +
+            '<div style="opacity:0.7">The work opens full screen without the address bar.<br>작품이 주소창 없이 전체 화면으로 열립니다.</div>' +
             '<button style="margin-top:1.4em;padding:0.5em 1.6em;color:inherit;background:none;border:1px solid rgba(255,255,255,0.5);border-radius:2em;font:inherit;cursor:pointer">OK</button>' +
             '</div>';
         Object.assign(el.style, {
