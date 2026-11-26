@@ -187,8 +187,10 @@ function setup() {
     const unlockAudio = (ev) => {
         const c = getAudioContext();
         if (c.state !== 'running') c.resume().then(() => bootLog('unlock → ' + c.state));
-        if (started && fullscreenPending) requestFullscreenNow(ev.type);
-        if (started) requestWakeLock();   // 화면 켜 두기도 사용자 동작(touchend/click) 안에서 요청해야 허락됨 (Safari)   // 시작 탭의 손 뗄 때(실패하면 이어지는 click에서 한 번 더)
+        // 화면 켜 두기를 전체화면보다 먼저: Safari는 한 번의 탭(사용자 동작)을 권한이 필요한 요청 하나에만 쓰게 해서
+        // 전체화면을 먼저 요청하면 화면 켜 두기가 거절됨 (iPad Safari에서 확인)
+        if (started) requestWakeLock();
+        if (started && fullscreenPending) requestFullscreenNow(ev.type);   // 시작 탭의 손 뗄 때(실패하면 이어지는 click에서 한 번 더)
         if (started && audio && audio.paused) audio.play().catch(() => {});
     };
     document.addEventListener('touchend', unlockAudio, true);
@@ -699,7 +701,8 @@ function startKeepAwakeVideo(why) {
         v.src = 'vendor/keepawake.mp4';   // 16×16 검은 화면 2초, 소리 없음 (1.5KB)
         v.muted = true; v.loop = true; v.playsInline = true;
         v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('aria-hidden', 'true');
-        Object.assign(v.style, { position: 'fixed', left: '0', bottom: '0', width: '1px', height: '1px', opacity: '0.01', pointerEvents: 'none', zIndex: '-1' });
+        // 너무 작거나 투명하면 브라우저가 '안 보이는 동영상'으로 보고 멈춤 → 2px 불투명 검정(검은 바탕이라 눈에는 안 보임)
+        Object.assign(v.style, { position: 'fixed', left: '0', bottom: '0', width: '2px', height: '2px', opacity: '1', pointerEvents: 'none', zIndex: '0', background: '#000' });
         document.body.appendChild(v);
         keepAwakeVideo = v;
     }
