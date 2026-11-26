@@ -121,7 +121,9 @@ let weatherTempC = null;
 
 let copyrightEl;
 let exitBtnEl;
-let fullscreenPending = false;   // 터치 기기: 시작 탭의 touchend에서 전체화면 요청   // 작품 중 메뉴로 돌아가는 × 버튼
+let fullscreenPending = false;
+let fsBtnEl;                 // × 옆 '전체화면 다시 들어가기' 버튼 (전체화면이 아닐 때만)
+let fullscreenBroken = false; // 전체화면 요청이 예외로 실패하는 브라우저(iPad Firefox 등) → 버튼 숨김   // 터치 기기: 시작 탭의 touchend에서 전체화면 요청   // 작품 중 메뉴로 돌아가는 × 버튼
 
 
 let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
@@ -297,6 +299,26 @@ function setup() {
     exitBtnEl.style('z-index', '30');
     exitBtnEl.style('display', 'none');
     exitBtnEl.elt.addEventListener('click', (ev) => { ev.stopPropagation(); returnToMenu(); });
+
+    // 전체화면 다시 들어가기 버튼 (× 왼쪽). 전체화면을 쓸 수 있고 지금 전체화면이 아닐 때만 보임
+    fsBtnEl = createElement('button',
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>');
+    fsBtnEl.attribute('aria-label', 'Fullscreen');
+    fsBtnEl.attribute('title', 'Fullscreen');
+    for (const [k, v] of Object.entries({
+        position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 'calc(env(safe-area-inset-right, 0px) + 62px)',
+        padding: '12px', background: 'rgba(0,0,0,0.35)', border: 'none', 'border-radius': '50%',
+        color: 'rgba(255,255,255,0.85)', 'line-height': '0', cursor: 'pointer', 'z-index': '30', display: 'none',
+    })) fsBtnEl.style(k, v);
+    fsBtnEl.elt.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (isTouchDevice) { fullscreenTries = 0; requestFullscreenNow('button'); }
+        else fullscreen(true);
+        hideControls();
+    });
+    document.addEventListener('fullscreenchange', () => { if (controlsVisible) showControls(); });
+    document.addEventListener('webkitfullscreenchange', () => { if (controlsVisible) showControls(); });
     copyrightEl.style('position', 'fixed');
     copyrightEl.style('left', '20px');
     copyrightEl.style('bottom', '20px');
@@ -647,6 +669,7 @@ function requestFullscreenNow(from) {
         // 바꿔 처리해서 동영상이 없는 이 페이지에서는 항상 실패 → 더 시도하지 않음
         bootLog('fs throw (' + from + '): ' + e);
         fullscreenPending = false;
+        fullscreenBroken = true;
     }
 }
 
@@ -673,6 +696,12 @@ function showControls() {
     if (!started || !exitBtnEl) return;
     controlsVisible = true;
     exitBtnEl.style('display', 'block');
+    if (fsBtnEl) {
+        const canFs = (document.fullscreenEnabled || document.webkitFullscreenEnabled) && !fullscreenBroken
+            && !new URLSearchParams(location.search).has('nofs');
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        fsBtnEl.style('display', canFs && !isFs ? 'block' : 'none');
+    }
     clearTimeout(controlsTimer);
     controlsTimer = setTimeout(() => hideControls(), 3000);
 }
@@ -680,6 +709,7 @@ function hideControls() {
     controlsVisible = false;
     clearTimeout(controlsTimer);
     if (exitBtnEl) exitBtnEl.style('display', 'none');
+    if (fsBtnEl) fsBtnEl.style('display', 'none');
 }
 
 function mouseMoved() {
