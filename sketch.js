@@ -182,13 +182,10 @@ function setup() {
     // iOS: 소리 허용(사용자 활성화)은 touchstart가 아니라 touchend/click 에서만 인정된다.
     // 시작 화면은 touchStarted에서 넘어가지만, 오디오 컨텍스트 재개는 여기서(손을 뗄 때) 한다.
     // 시작 후에도 계속 걸어 두어 전화·알림 등으로 끊긴 오디오를 탭 한 번으로 되살린다.
-    const unlockAudio = () => {
+    const unlockAudio = (ev) => {
         const c = getAudioContext();
         if (c.state !== 'running') c.resume().then(() => bootLog('unlock → ' + c.state));
-        if (started && fullscreenPending) {   // 시작 탭의 손 뗄 때 한 번만 (이후 사용자가 나가면 다시 강제하지 않음)
-            fullscreenPending = false;
-            try { fullscreen(true); } catch (e) {}
-        }
+        if (started && fullscreenPending) requestFullscreenNow(ev.type);   // 시작 탭의 손 뗄 때(실패하면 이어지는 click에서 한 번 더)
         if (started && audio && audio.paused) audio.play().catch(() => {});
     };
     document.addEventListener('touchend', unlockAudio, true);
@@ -586,7 +583,7 @@ function startAudio() {
     // 터치 기기(iPad·안드로이드)는 touchstart가 사용자 동작으로 인정되지 않아 거절됨 → 손을 뗄 때(unlockAudio) 한 번 요청
     fullscreenPending = false;
     if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) {
-        if (isTouchDevice) fullscreenPending = true;
+        if (isTouchDevice) { fullscreenPending = true; fullscreenTries = 0; }
         else fullscreen(true);
     }
 }
@@ -627,6 +624,28 @@ function fadeInAudio(durationMillis = 3000) {
         gainOut.gain.value = constrain(vol, 0, 1);
         if (currentStep >= steps) { clearInterval(fadeTimer); fadeTimer = null; }
     }, stepTime);
+}
+
+// 전체화면 요청 (터치 기기용): 성공하면 pending 해제, 실패하면 이유를 기록하고 다음 기회(click)에 재시도
+let fullscreenTries = 0;
+function requestFullscreenNow(from) {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) { fullscreenPending = false; bootLog('fs: no API'); return; }
+    if (document.fullscreenElement || document.webkitFullscreenElement) { fullscreenPending = false; return; }
+    fullscreenTries++;
+    try {
+        const p = req.call(el);
+        if (p && p.then) {
+            p.then(() => { fullscreenPending = false; bootLog('fs ok (' + from + ')'); })
+             .catch((e) => { bootLog('fs fail (' + from + '): ' + (e && (e.name + ' ' + e.message))); if (fullscreenTries >= 3) fullscreenPending = false; });
+        } else {
+            fullscreenPending = false; bootLog('fs requested (' + from + ', no promise)');
+        }
+    } catch (e) {
+        bootLog('fs throw (' + from + '): ' + e);
+        if (fullscreenTries >= 3) fullscreenPending = false;
+    }
 }
 
 // 작품 → 메뉴로 돌아가기 (× 버튼). 소리 멈추고 상태 초기화, 메뉴 화면(화면 전체 캔버스)으로
