@@ -643,8 +643,10 @@ function requestFullscreenNow(from) {
             fullscreenPending = false; bootLog('fs requested (' + from + ', no promise)');
         }
     } catch (e) {
+        // 예외(throw)는 재시도해도 같음 — 예: iPad Firefox는 전체화면 요청을 <video> 전용(webkitEnterFullscreen)으로
+        // 바꿔 처리해서 동영상이 없는 이 페이지에서는 항상 실패 → 더 시도하지 않음
         bootLog('fs throw (' + from + '): ' + e);
-        if (fullscreenTries >= 3) fullscreenPending = false;
+        fullscreenPending = false;
     }
 }
 
