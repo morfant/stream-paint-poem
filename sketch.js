@@ -398,7 +398,10 @@ function shouldUseStreamDecoder() {
     if (q === '0') return false;
     const ua = navigator.userAgent;
     const isWebKit = /AppleWebKit/.test(ua) && !/Chrome\/|Chromium|Edg\//.test(ua);
-    return isWebKit && typeof StreamDecoder !== 'undefined';
+    // 안드로이드도 디코더 경로: <audio>는 라이브 스트림을 넉넉히 버퍼링한 뒤 재생해서 시작이 느림 (Redmi에서 확인).
+    // 데스크톱 Chrome/Firefox는 차이가 없어 기존 <audio> 경로 유지.
+    const isAndroid = /Android/.test(ua);
+    return (isWebKit || isAndroid) && typeof StreamDecoder !== 'undefined';
 }
 
 function toggleFullscreen() {
