@@ -123,7 +123,14 @@ let copyrightEl;
 let exitBtnEl;
 let fullscreenPending = false;
 let fsBtnEl;                 // × 옆 '전체화면 다시 들어가기' 버튼 (전체화면이 아닐 때만)
-let fullscreenBroken = false; // 전체화면 요청이 예외로 실패하는 브라우저(iPad Firefox 등) → 버튼 숨김   // 터치 기기: 시작 탭의 touchend에서 전체화면 요청   // 작품 중 메뉴로 돌아가는 × 버튼
+// 전체화면을 쓸 수 없는 브라우저 → 요청·버튼 생략.
+// iPad Firefox는 requestFullscreen을 자체 JS로 바꿔 '페이지의 <video>를 전체화면'으로 처리함 →
+// 화면 켜 두기용 무음 동영상이 전체화면으로 떠 버림. 내장(native) 함수가 아니면 지원 안 함으로 본다.
+let fullscreenBroken = (() => {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    return !!req && !/\[native code\]/.test(Function.prototype.toString.call(req));
+})();   // 터치 기기: 시작 탭의 touchend에서 전체화면 요청   // 작품 중 메뉴로 돌아가는 × 버튼
 
 
 let isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;   // 마우스 hover 효과는 터치 기기에서 끔
@@ -187,8 +194,10 @@ function setup() {
     const unlockAudio = (ev) => {
         const c = getAudioContext();
         if (c.state !== 'running') c.resume().then(() => bootLog('unlock → ' + c.state));
-        if (started && fullscreenPending) requestFullscreenNow(ev.type);
-        if (started) requestWakeLock();   // 화면 켜 두기도 사용자 동작(touchend/click) 안에서 요청해야 허락됨 (Safari)   // 시작 탭의 손 뗄 때(실패하면 이어지는 click에서 한 번 더)
+        // 화면 켜 두기를 전체화면보다 먼저: Safari는 한 번의 탭(사용자 동작)을 권한이 필요한 요청 하나에만 쓰게 해서
+        // 전체화면을 먼저 요청하면 화면 켜 두기가 거절됨 (iPad Safari에서 확인)
+        if (started) requestWakeLock();
+        if (started && fullscreenPending) requestFullscreenNow(ev.type);   // 시작 탭의 손 뗄 때(실패하면 이어지는 click에서 한 번 더)
         if (started && audio && audio.paused) audio.play().catch(() => {});
     };
     document.addEventListener('touchend', unlockAudio, true);
@@ -606,7 +615,7 @@ function startAudio() {
     // 전체화면: 지원하는 곳에서만 (아이폰 Safari는 요소 전체화면 미지원), ?nofs 로 끌 수 있음
     // 터치 기기(iPad·안드로이드)는 touchstart가 사용자 동작으로 인정되지 않아 거절됨 → 손을 뗄 때(unlockAudio) 한 번 요청
     fullscreenPending = false;
-    if (document.fullscreenEnabled && !new URLSearchParams(location.search).has('nofs')) {
+    if (document.fullscreenEnabled && !fullscreenBroken && !new URLSearchParams(location.search).has('nofs')) {
         if (isTouchDevice) { fullscreenPending = true; fullscreenTries = 0; }
         else fullscreen(true);
     }
@@ -678,17 +687,43 @@ function requestFullscreenNow(from) {
 // 화면 켜 두기 (Screen Wake Lock): 작품을 보는 동안 기기가 화면을 어둡게·잠그지 않게.
 // 다른 앱에 갔다 오면 풀리므로 돌아왔을 때 다시 요청. 지원 안 하는 브라우저는 조용히 넘어감.
 let wakeLock = null;
+let keepAwakeVideo = null;   // 대체 방법: 눈에 안 보이는 무음 동영상 반복 재생(iOS는 동영상 재생 중 화면을 끄지 않음)
 async function requestWakeLock() {
-    if (!started || !('wakeLock' in navigator)) return;
+    if (!started) return;
     if (wakeLock && !wakeLock.released) return;
+    if (!('wakeLock' in navigator)) { startKeepAwakeVideo('no api'); return; }   // 예: iPad Chrome·Firefox(앱 안 Safari 엔진)
     try {
         wakeLock = await navigator.wakeLock.request('screen');
         bootLog('wakeLock on');
         wakeLock.addEventListener('release', () => bootLog('wakeLock released'));
-    } catch (e) { bootLog('wakeLock fail: ' + (e && e.name)); }
+        stopKeepAwakeVideo();
+    } catch (e) {
+        bootLog('wakeLock fail: ' + (e && e.name));
+        startKeepAwakeVideo('api fail');
+    }
+}
+function startKeepAwakeVideo(why) {
+    if (!keepAwakeVideo) {
+        const v = document.createElement('video');
+        v.src = 'vendor/keepawake.mp4';   // 16×16 검은 화면 2초, 소리 없음 (1.5KB)
+        v.muted = true; v.loop = true; v.playsInline = true;
+        v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('aria-hidden', 'true');
+        // 너무 작거나 투명하면 브라우저가 '안 보이는 동영상'으로 보고 멈춤 → 2px 불투명 검정(검은 바탕이라 눈에는 안 보임)
+        Object.assign(v.style, { position: 'fixed', left: '0', bottom: '0', width: '2px', height: '2px', opacity: '1', pointerEvents: 'none', zIndex: '0', background: '#000' });
+        document.body.appendChild(v);
+        keepAwakeVideo = v;
+    }
+    if (!keepAwakeVideo.paused) return;
+    keepAwakeVideo.play()
+        .then(() => bootLog('keepawake video on (' + why + ')'))
+        .catch((e) => bootLog('keepawake video fail: ' + (e && e.name)));
+}
+function stopKeepAwakeVideo() {
+    if (keepAwakeVideo && !keepAwakeVideo.paused) keepAwakeVideo.pause();
 }
 function releaseWakeLock() {
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    stopKeepAwakeVideo();
 }
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && started) requestWakeLock();
@@ -798,7 +833,7 @@ function updateDebug() {
         st ? 'buf: ' + st.bufferedSec.toFixed(2) + 's  playing: ' + st.playing + '  conn: ' + st.connected + '  under: ' + st.underruns + '  reconn: ' + st.reconnects : '',
         audio ? 'audio t: ' + audio.currentTime.toFixed(1) + ' paused: ' + audio.paused : '',
         'canvas: ' + Math.round(width) + 'x' + Math.round(height) + ' top ' + Math.round(canvasTop) + '  win: ' + windowWidth + 'x' + windowHeight,
-        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + '  fs: ' + !!document.fullscreenElement + '  wake: ' + (('wakeLock' in navigator) ? (wakeLock && !wakeLock.released ? 'on' : 'off') : 'n/a'),
+        'standalone: ' + (navigator.standalone === true) + '  AD: ' + (typeof AudioDecoder) + '  secure: ' + window.isSecureContext + '  fsEnabled: ' + (document.fullscreenEnabled === true) + (fullscreenBroken ? '(shim)' : '') + '  fs: ' + !!document.fullscreenElement + '  wake: ' + (wakeLock && !wakeLock.released ? 'lock' : (keepAwakeVideo && !keepAwakeVideo.paused ? 'video' : 'off')) + ('wakeLock' in navigator ? '' : ' (no api)'),
         debugErrors.slice(-3).join('\n'),
     ].filter(Boolean).join('\n'));
 }
